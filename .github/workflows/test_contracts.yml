@@ -1,0 +1,37 @@
+name: Contracts CI
+
+on: push
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  run_ci:
+    strategy:
+      fail-fast: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install contract deps
+        run: forge --version && forge install
+        id: install
+
+      - name: Build contracts
+        run: forge build --sizes
+        id: build
+
+      - name: Copy compiled artifacts
+        run: cp -r compiled/. out/
+        id: artifacts
+
+      - name: Run tests
+        run: forge test -vvv
+        id: test
