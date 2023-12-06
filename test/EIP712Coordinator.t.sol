@@ -20,7 +20,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Cold cost of `CallbackConsumer.rawReceiveCompute`
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
     /// @dev Overriden from CoordinatorConstants since state change order forces this to cost ~100 wei more
-    uint32 constant CALLBACK_COST = COLD_DELIVERY_COST_CALLBACK + 100 wei;
+    uint32 constant CALLBACK_COST = COLD_DELIVERY_COST + 100 wei;
 
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
