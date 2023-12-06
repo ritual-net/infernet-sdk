@@ -31,6 +31,9 @@ abstract contract CoordinatorConstants {
     /// @notice Mock compute container ID
     string constant MOCK_CONTAINER_ID = "container";
 
+    /// @notice Mock compute container ID hashed
+    bytes32 constant HASHED_MOCK_CONTAINER_ID = keccak256(abi.encode(MOCK_CONTAINER_ID));
+
     /// @notice Mock container inputs
     bytes constant MOCK_CONTAINER_INPUTS = "inputs";
 
@@ -183,7 +186,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         assertEq(sub.maxGasLimit, 100_000);
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
-        assertEq(sub.containerId, MOCK_CONTAINER_ID);
+        assertEq(sub.containerId, HASHED_MOCK_CONTAINER_ID);
         assertEq(sub.inputs, MOCK_CONTAINER_INPUTS);
     }
 

@@ -64,7 +64,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, frequency);
         assertEq(sub.period, period);
-        assertEq(sub.containerId, containerId);
+        assertEq(sub.containerId, keccak256(abi.encode(containerId)));
         assertEq(sub.inputs, "");
 
         // Explicitly return subscription ID

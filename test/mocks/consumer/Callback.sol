@@ -55,7 +55,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
-        assertEq(sub.containerId, containerId);
+        assertEq(sub.containerId, keccak256(abi.encode(containerId)));
         assertEq(sub.inputs, inputs);
 
         // Explicitly return subscription ID

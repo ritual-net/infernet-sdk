@@ -27,13 +27,13 @@ contract EIP712Coordinator is EIP712, Coordinator {
     uint256 public constant DELEGATEE_OVERHEAD_CACHED_WEI = 600 wei;
 
     /// @notice Gas overhead in wei to create a new subscription via delegatee signature
-    /// @dev Make note that this does not account for gas costs of dynamic inputs (containerId, inputs), just base overhead
+    /// @dev Make note that this does not account for gas costs of dynamic `inputs`, just base overhead
     /// @dev Can fit within uint24, see comment for `DELEGATEE_OVERHEAD_CACHED_WEI` for details
-    uint256 public constant DELEGATEE_OVERHEAD_CREATE_WEI = 91_200 wei;
+    uint256 public constant DELEGATEE_OVERHEAD_CREATE_WEI = 130_200 wei;
 
     /// @notice EIP-712 struct(Subscription) typeHash
     bytes32 private constant EIP712_SUBSCRIPTION_TYPEHASH = keccak256(
-        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,string containerId,bytes inputs)"
+        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bytes inputs)"
     );
 
     /// @notice EIP-712 struct(DelegateSubscription) typeHash
@@ -41,7 +41,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @dev The `nonce` represents the nonce of the subscribing contract (sub-owner); prevents signature replay
     /// @dev The `expiry` is when the delegated subscription signature expires and can no longer be used
     bytes32 private constant EIP712_DELEGATE_SUBSCRIPTION_TYPEHASH = keccak256(
-        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,string containerId,bytes inputs)"
+        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bytes inputs)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -139,8 +139,8 @@ contract EIP712Coordinator is EIP712, Coordinator {
                             sub.redundancy,
                             sub.maxGasPrice,
                             sub.maxGasLimit,
+                            sub.containerId,
                             // Hash dynamic values
-                            keccak256(bytes(sub.containerId)),
                             keccak256(sub.inputs)
                         )
                     )

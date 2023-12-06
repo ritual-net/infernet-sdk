@@ -21,7 +21,7 @@ library LibStruct {
         uint32 maxGasLimit;
         uint32 frequency;
         uint32 period;
-        string containerId;
+        bytes32 containerId;
         bytes inputs;
     }
 
@@ -58,7 +58,7 @@ library LibStruct {
             uint16 redundancy,
             uint48 maxGasPrice,
             uint32 maxGasLimit,
-            string memory containerId,
+            bytes32 containerId,
             bytes memory inputs
         ) = coordinator.subscriptions(subscriptionId);
 

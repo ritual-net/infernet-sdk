@@ -46,9 +46,10 @@ contract Coordinator is Manager {
         /// @dev uint24 is too small at ~16.7M (<30M mainnet gas limit), but uint32 is more than enough (~4.2B wei)
         uint32 maxGasLimit;
         /// @notice Container identifier used by off-chain Infernet nodes to determine which container is used to fulfill a subscription
+        /// @dev Represented as fixed size hash of stringified list of containers
         /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
-        /// @dev Better represented by a string[] type but constrained to string to keep struct and functions simple
-        string containerId;
+        /// @dev Better represented by a string[] type but constrained to hash(string) to keep struct and functions simple
+        bytes32 containerId;
         /// @notice Optional container input parameters
         /// @dev If left empty, off-chain Infernet nodes call public view fn: `BaseConsumer(owner).getContainerInputs()`
         bytes inputs;
@@ -368,7 +369,7 @@ contract Coordinator is Manager {
             maxGasLimit: maxGasLimit,
             frequency: frequency,
             period: period,
-            containerId: containerId,
+            containerId: keccak256(abi.encode(containerId)),
             inputs: inputs
         });
 
