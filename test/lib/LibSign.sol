@@ -13,12 +13,12 @@ library LibSign {
 
     /// @notice EIP-712 Coordinator.Subscription typeHash
     bytes32 private constant SUBSCRIPTION_TYPEHASH = keccak256(
-        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bytes inputs)"
+        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId)"
     );
 
     /// @notice EIP-712 DelegateSubscription typeHash
     bytes32 private constant DELEGATE_SUBSCRIPTION_TYPEHASH = keccak256(
-        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bytes inputs)"
+        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -61,9 +61,7 @@ library LibSign {
                 sub.redundancy,
                 sub.maxGasPrice,
                 sub.maxGasLimit,
-                sub.containerId,
-                // Dynamic values must be encoded as hash of contents
-                keccak256(sub.inputs)
+                sub.containerId
             )
         );
     }

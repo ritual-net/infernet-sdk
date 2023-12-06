@@ -49,7 +49,7 @@ abstract contract CoordinatorConstants {
 
     /// @notice Cold cost of CallbackConsumer.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 constant COLD_DELIVERY_COST_CALLBACK = 115_076 wei;
+    uint32 constant COLD_DELIVERY_COST_CALLBACK = 115_160 wei;
 
     /// @notice Cold cost of SubscriptionConsumer.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
@@ -109,14 +109,10 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         }
 
         // Initialize mock callback consumer
-        CALLBACK = new MockCallbackConsumer(
-            address(COORDINATOR)
-        );
+        CALLBACK = new MockCallbackConsumer(address(COORDINATOR));
 
         // Initialize mock subscription consumer
-        SUBSCRIPTION = new MockSubscriptionConsumer(
-            address(COORDINATOR)
-        );
+        SUBSCRIPTION = new MockSubscriptionConsumer(address(COORDINATOR));
     }
 }
 
@@ -187,7 +183,9 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
         assertEq(sub.containerId, HASHED_MOCK_CONTAINER_ID);
-        assertEq(sub.inputs, MOCK_CONTAINER_INPUTS);
+
+        // Assert subscription inputs are correctly stord
+        assertEq(CALLBACK.getContainerInputs(actual, 0, 0, address(0)), MOCK_CONTAINER_INPUTS);
     }
 
     /// @notice Cannot deliver callback response if maxGasPrice too low

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {console} from "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {LibSign} from "./lib/LibSign.sol";
 import {LibStruct} from "./lib/LibStruct.sol";
@@ -21,7 +20,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Cold cost of `CallbackConsumer.rawReceiveCompute`
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
     /// @dev Overriden from CoordinatorConstants since state change order forces this to cost ~100 wei more
-    uint32 constant CALLBACK_COST = 115_176 wei;
+    uint32 constant CALLBACK_COST = COLD_DELIVERY_COST_CALLBACK + 100 wei;
 
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
@@ -85,10 +84,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         BACKUP_DELEGATEE_ADDRESS = vm.addr(BACKUP_DELEGATEE_PRIVATE_KEY);
 
         // Initialize mock callback consumer w/ assigned delegate
-        CALLBACK = new MockDelegatorCallbackConsumer(
-            address(COORDINATOR),
-            DELEGATEE_ADDRESS
-        );
+        CALLBACK = new MockDelegatorCallbackConsumer(address(COORDINATOR), DELEGATEE_ADDRESS);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -106,8 +102,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
                 + uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()),
             frequency: 1,
             period: 0,
-            containerId: HASHED_MOCK_CONTAINER_ID,
-            inputs: MOCK_CONTAINER_INPUTS
+            containerId: HASHED_MOCK_CONTAINER_ID
         });
     }
 
@@ -162,7 +157,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
-        assertEq(sub.inputs, actual.inputs);
 
         // Assert state is correctly updated
         if (nonce > maxSubscriberNonce) {
@@ -255,7 +249,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
-        assertEq(sub.inputs, actual.inputs);
 
         // Assert state is correctly updated
         assertEq(COORDINATOR.maxSubscriberNonce(address(CALLBACK)), 0);
@@ -603,8 +596,8 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         endingGas = gasleft();
         uint256 gasUsedCached = startingGas - endingGas;
 
-        // Assert in ~approximate range (+/- 16K gas, actually copying calldata into memory is expensive)
-        uint256 delta = 16_000 wei;
+        // Assert in ~approximate range (+/- 20K gas, actually copying calldata into memory is expensive)
+        uint256 delta = 20_000 wei;
         assertApproxEqAbs(gasExpected, gasUsed, delta);
         assertApproxEqAbs(gasExpectedCached, gasUsedCached, delta);
     }
