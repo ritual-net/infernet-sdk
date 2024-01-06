@@ -6,14 +6,17 @@ import {Test} from "forge-std/Test.sol";
 import {LibSign} from "./lib/LibSign.sol";
 import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
+import {NodeManager} from "../src/NodeManager.sol";
+import {Registry} from "../src/Registry.sol";
 import {Coordinator} from "../src/Coordinator.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {ICoordinatorEvents, CoordinatorConstants} from "./Coordinator.t.sol";
+import {DeploymentFixture} from "./mocks/DeploymentFixture.sol";
 import {MockDelegatorCallbackConsumer} from "./mocks/consumer/DelegatorCallback.sol";
 
 /// @title EIP712CoordinatorTest
 /// @notice Tests EIP712Coordinator implementation
-contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents {
+contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents, DeploymentFixture {
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -57,11 +60,13 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
     function setUp() public {
         // Initialize coordinator
-        COORDINATOR = new EIP712Coordinator();
+        (address registry, address managerAddr,, address coordinatorAddr) = deployInfernet();
+        NodeManager manager = NodeManager(managerAddr);
+        COORDINATOR = EIP712Coordinator(coordinatorAddr);
 
         // Initalize mock nodes
-        ALICE = new MockNode(COORDINATOR);
-        BOB = new MockNode(COORDINATOR);
+        ALICE = new MockNode(COORDINATOR, manager);
+        BOB = new MockNode(COORDINATOR, manager);
 
         // For each node
         MockNode[2] memory nodes = [ALICE, BOB];
@@ -72,7 +77,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
             // Activate nodes
             vm.warp(0);
             node.registerNode(address(node));
-            vm.warp(COORDINATOR.cooldown());
+            vm.warp(manager.cooldown());
             node.activateNode();
         }
 
@@ -85,10 +90,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         BACKUP_DELEGATEE_ADDRESS = vm.addr(BACKUP_DELEGATEE_PRIVATE_KEY);
 
         // Initialize mock callback consumer w/ assigned delegate
-        CALLBACK = new MockDelegatorCallbackConsumer(
-            address(COORDINATOR),
-            DELEGATEE_ADDRESS
-        );
+        CALLBACK = new MockDelegatorCallbackConsumer(address(COORDINATOR), DELEGATEE_ADDRESS);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -587,7 +589,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Manually verifying the callstack is useful here to ensure that the overhead gas is being properly set
         // Measure direct delivery for creation + delivery
-        uint256 inputOverhead = 35_000 wei;
+        uint256 inputOverhead = 36_000 wei;
         uint256 gasExpected = CALLBACK_COST + COORDINATOR.DELEGATEE_OVERHEAD_CREATE_WEI()
             + COORDINATOR.DELIVERY_OVERHEAD_WEI() + inputOverhead;
         uint256 startingGas = gasleft();

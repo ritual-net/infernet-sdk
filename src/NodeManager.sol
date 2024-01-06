@@ -8,7 +8,7 @@ pragma solidity ^0.8.4;
 /// @dev Allows any node to deactivate itself and return to an inactive state
 /// @dev Exposes an `onlyActiveNode()` modifier used to restrict functions to being called by only active nodes
 /// @dev Restricts addresses to 1 of 3 states: `Inactive`, `Registered`, `Active`
-abstract contract Manager {
+contract NodeManager {
     /*//////////////////////////////////////////////////////////////
                                 STRUCTS
     //////////////////////////////////////////////////////////////*/
@@ -104,18 +104,6 @@ abstract contract Manager {
     /// @dev 4-byte signature: `0x33daa7f9`
     /// @param status current status of node failing activation
     error NodeNotActivateable(NodeStatus status);
-
-    /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Allow only callers that are active nodes
-    modifier onlyActiveNode() {
-        if (nodeInfo[msg.sender].status != NodeStatus.Active) {
-            revert NodeNotActive();
-        }
-        _;
-    }
 
     /*//////////////////////////////////////////////////////////////
                                FUNCTIONS

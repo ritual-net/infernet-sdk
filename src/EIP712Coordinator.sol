@@ -12,6 +12,14 @@ import {Delegator} from "./pattern/Delegator.sol";
 /// @dev Allows nodes to atomically create subscriptions and deliver compute responses
 contract EIP712Coordinator is EIP712, Coordinator {
     /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initialize the registry address
+    /// @param registry address of `Registry` contract
+    constructor(address registry) Coordinator(registry) {}
+
+    /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
 

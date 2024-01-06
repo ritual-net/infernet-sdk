@@ -1,14 +1,48 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {Manager} from "./Manager.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
+import {NodeManager} from "./NodeManager.sol";
+import {Registry} from "./Registry.sol";
 
 /// @title Coordinator
 /// @notice Coordination layer between consuming smart contracts and off-chain Infernet nodes
 /// @dev Allows creating and deleting `Subscription`(s)
-/// @dev Allows nodes with `Manager.NodeStatus.Active` to deliver subscription outputs via off-chain container compute
-contract Coordinator is Manager {
+/// @dev Allows nodes with `NodeManager.NodeStatus.Active` to deliver subscription outputs via off-chain container compute
+contract Coordinator {
+    /*//////////////////////////////////////////////////////////////
+                              IMMUTABLES
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Address of the registry
+    address public immutable REGISTRY;
+    /// @notice Address of the node manager
+    address public immutable NODE_MANAGER;
+
+    /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initialize the registry address
+    /// @param registry address of `Registry` contract
+    constructor(address registry) {
+        REGISTRY = registry;
+        NODE_MANAGER = Registry(registry).NODE_MANAGER();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                               MODIFIERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Allow only callers that are active nodes
+    modifier onlyActiveNode() {
+        (NodeManager.NodeStatus status,) = NodeManager(NODE_MANAGER).nodeInfo(msg.sender);
+        if (status != NodeManager.NodeStatus.Active) {
+            revert NodeManager.NodeNotActive();
+        }
+        _;
+    }
+
     /*//////////////////////////////////////////////////////////////
                                 STRUCTS
     //////////////////////////////////////////////////////////////*/
@@ -81,7 +115,7 @@ contract Coordinator is Manager {
     /// @dev Limited to type(Subscription.redundancy) == uint16
     /// @dev Technically, this is not required and we can save an SLOAD if we simply add a uint48 to the subscription
     ///      struct that represents 32 bits of the interval -> 16 bits of redundancy count, reset each interval change
-    ///      But, this is a little over the optimization:redability line and would make Subscriptions harder to grok
+    ///      But, this is a little over the optimization: readability line and would make Subscriptions harder to grok
     mapping(bytes32 => uint16) public redundancyCount;
 
     /// @notice subscriptionID => Subscription
@@ -216,7 +250,7 @@ contract Coordinator is Manager {
             // uint32 automatically consumes full word
             mstore(m, subscriptionId)
             // Store subscriptions mapping storage slot (4) to 32 byte (1 word) offset
-            mstore(add(m, 0x20), 4)
+            mstore(add(m, 0x20), 3)
 
             // At this point, memory layout [0 -> 0x20 == subscriptionId, 0x20 -> 0x40 == 4]
             // Calculate mapping storage slot — hash(key, mapping slot)
@@ -413,7 +447,7 @@ contract Coordinator is Manager {
         }
     }
 
-    /// @notice Allows nodes with `Manager.NodeStatus.Active` to deliver container compute responses for a subscription
+    /// @notice Allows nodes with `NodeManager.NodeStatus.Active` to deliver container compute responses for a subscription
     /// @dev Re-entering does not work because only active nodes (max 1 response) can call `deliverCompute`
     /// @dev Re-entering and delivering via a seperate node `msg.sender` works but is ignored in favor of explicit `maxGasLimit`
     /// @dev For containers without succinctly-verifiable proofs, the `proof` field can be repurposed for arbitrary metadata

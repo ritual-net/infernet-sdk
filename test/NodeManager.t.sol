@@ -2,10 +2,11 @@
 pragma solidity ^0.8.4;
 
 import {Test} from "forge-std/Test.sol";
-import {Manager} from "../src/Manager.sol";
+import {NodeManager} from "../src/NodeManager.sol";
+import {Registry} from "../src/Registry.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
-import {MockManager} from "./mocks/MockManager.sol";
+import {MockNodeManager} from "./mocks/MockNodeManager.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 
 /// @title IManagerEvents
@@ -18,13 +19,13 @@ interface IManagerEvents {
 
 /// @title ManagerTest
 /// @notice Tests Manager implementation
-contract ManagerTest is Test, IManagerEvents {
+contract NodeManagerTest is Test, IManagerEvents {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Manager
-    MockManager internal MANAGER;
+    MockNodeManager internal MANAGER;
 
     /// @notice Mock node (Alice)
     MockNode internal ALICE;
@@ -37,13 +38,18 @@ contract ManagerTest is Test, IManagerEvents {
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
+        // Initialize coordinator
+        address managerAddr = vm.computeCreateAddress(address(this), 2);
+        address coordinatorAddr = vm.computeCreateAddress(address(this), 3);
+        Registry registry = new Registry(managerAddr, coordinatorAddr);
+
         // Initialize manager
-        MANAGER = new MockManager();
+        MANAGER = new MockNodeManager();
 
         // Initialize mock nodes
         // Overriding manager to parent type of EIP712Coordinator
-        ALICE = new MockNode(EIP712Coordinator(address(MANAGER)));
-        BOB = new MockNode(EIP712Coordinator(address(MANAGER)));
+        ALICE = new MockNode(EIP712Coordinator(address(registry)), MANAGER);
+        BOB = new MockNode(EIP712Coordinator(address(registry)), MANAGER);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -69,8 +75,8 @@ contract ManagerTest is Test, IManagerEvents {
         MANAGER.registerNode(aliceAddress);
 
         // Check new node statuses
-        ALICE.assertNodeStatus(Manager.NodeStatus.Registered);
-        BOB.assertNodeStatus(Manager.NodeStatus.Inactive);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Registered);
+        BOB.assertNodeStatus(NodeManager.NodeStatus.Inactive);
 
         // Check cooldown start timestamps
         assertEq(ALICE.cooldownStart(), startTimestamp);
@@ -97,8 +103,8 @@ contract ManagerTest is Test, IManagerEvents {
         MANAGER.registerNode(aliceAddress);
 
         // Check new node statuses
-        ALICE.assertNodeStatus(Manager.NodeStatus.Registered);
-        BOB.assertNodeStatus(Manager.NodeStatus.Inactive);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Registered);
+        BOB.assertNodeStatus(NodeManager.NodeStatus.Inactive);
 
         // Check cooldown start timestamps
         assertEq(ALICE.cooldownStart(), startTimestamp);
@@ -109,12 +115,12 @@ contract ManagerTest is Test, IManagerEvents {
     function testCannotReregisterNode() public {
         // Register Alice
         ALICE.registerNode(address(ALICE));
-        ALICE.assertNodeStatus(Manager.NodeStatus.Registered);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Registered);
 
         // Ensure revert if trying to register again
         vm.expectRevert(
             abi.encodeWithSelector(
-                Manager.NodeNotRegisterable.selector, address(ALICE), uint8(Manager.NodeStatus.Registered)
+                NodeManager.NodeNotRegisterable.selector, address(ALICE), uint8(NodeManager.NodeStatus.Registered)
             )
         );
         ALICE.registerNode(address(ALICE));
@@ -132,7 +138,7 @@ contract ManagerTest is Test, IManagerEvents {
         // Ensure revert if trying to register
         vm.expectRevert(
             abi.encodeWithSelector(
-                Manager.NodeNotRegisterable.selector, address(ALICE), uint8(Manager.NodeStatus.Active)
+                NodeManager.NodeNotRegisterable.selector, address(ALICE), uint8(NodeManager.NodeStatus.Active)
             )
         );
         ALICE.registerNode(address(ALICE));
@@ -155,7 +161,7 @@ contract ManagerTest is Test, IManagerEvents {
         // Check states
         assertEq(ALICE.isActiveNode(), true);
         assertEq(ALICE.cooldownStart(), 0);
-        ALICE.assertNodeStatus(Manager.NodeStatus.Active);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Active);
     }
 
     /// @notice Check cannot activate node before cooldown has elapsed
@@ -171,7 +177,7 @@ contract ManagerTest is Test, IManagerEvents {
 
         vm.warp(startTimestamp + elapsed);
         // Ensure revert when attempting to activate Alice
-        vm.expectRevert(abi.encodeWithSelector(Manager.CooldownActive.selector, startTimestamp));
+        vm.expectRevert(abi.encodeWithSelector(NodeManager.CooldownActive.selector, startTimestamp));
         ALICE.activateNode();
     }
 
@@ -179,7 +185,7 @@ contract ManagerTest is Test, IManagerEvents {
     function testCannotActivateInactiveNode() public {
         // Attempt to activate without registering
         vm.expectRevert(
-            abi.encodeWithSelector(Manager.NodeNotActivateable.selector, uint8(Manager.NodeStatus.Inactive))
+            abi.encodeWithSelector(NodeManager.NodeNotActivateable.selector, uint8(NodeManager.NodeStatus.Inactive))
         );
         ALICE.activateNode();
     }
@@ -192,7 +198,9 @@ contract ManagerTest is Test, IManagerEvents {
         ALICE.activateNode();
 
         // Attempt to re-activate Alice
-        vm.expectRevert(abi.encodeWithSelector(Manager.NodeNotActivateable.selector, uint8(Manager.NodeStatus.Active)));
+        vm.expectRevert(
+            abi.encodeWithSelector(NodeManager.NodeNotActivateable.selector, uint8(NodeManager.NodeStatus.Active))
+        );
         ALICE.activateNode();
     }
 
@@ -209,37 +217,37 @@ contract ManagerTest is Test, IManagerEvents {
 
     /// @notice Check inactive nodes cannot call onlyActiveNode functions
     function testCannnotCallOnlyActiveNodeFnAsInactiveNode() public {
-        vm.expectRevert(Manager.NodeNotActive.selector);
+        vm.expectRevert(NodeManager.NodeNotActive.selector);
         ALICE.isActiveNode();
     }
 
     /// @notice Check registered nodes cannot call onlyActiveNode functions
     function testCannotCallOnlyActiveNodeFnAsRegisteredNode() public {
         ALICE.registerNode(address(ALICE));
-        vm.expectRevert(Manager.NodeNotActive.selector);
+        vm.expectRevert(NodeManager.NodeNotActive.selector);
         ALICE.isActiveNode();
     }
 
     /// @notice Check that node can go to an inactive state from inactive
     function testCanDeactivateInactiveNode() public {
-        ALICE.assertNodeStatus(Manager.NodeStatus.Inactive);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Inactive);
         vm.expectEmit(address(MANAGER));
         emit NodeDeactivated(address(ALICE));
         ALICE.deactivateNode();
-        ALICE.assertNodeStatus(Manager.NodeStatus.Inactive);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Inactive);
     }
 
     /// @notice Check that node can go to an inactive state from registered
     function testCanDeactivateRegisteredNode() public {
         // Register Alice
         ALICE.registerNode(address(ALICE));
-        ALICE.assertNodeStatus(Manager.NodeStatus.Registered);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Registered);
 
         // Deactive Alice
         vm.expectEmit(address(MANAGER));
         emit NodeDeactivated(address(ALICE));
         ALICE.deactivateNode();
-        ALICE.assertNodeStatus(Manager.NodeStatus.Inactive);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Inactive);
     }
 
     /// @notice Check that node can go to an inactive state from Active
@@ -253,7 +261,7 @@ contract ManagerTest is Test, IManagerEvents {
         vm.expectEmit(address(MANAGER));
         emit NodeDeactivated(address(ALICE));
         ALICE.deactivateNode();
-        ALICE.assertNodeStatus(Manager.NodeStatus.Inactive);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Inactive);
     }
 
     function testActivateNodeMustReadministerCooldownIfReactivating() public {
@@ -264,7 +272,7 @@ contract ManagerTest is Test, IManagerEvents {
         ALICE.registerNode(address(ALICE));
 
         // Assert Alice status and cooldown
-        ALICE.assertNodeStatus(Manager.NodeStatus.Registered);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Registered);
         assertEq(ALICE.cooldownStart(), startTimestamp);
 
         vm.warp(startTimestamp + MANAGER.cooldown());
@@ -272,27 +280,27 @@ contract ManagerTest is Test, IManagerEvents {
         ALICE.activateNode();
 
         // Assert Alice status and nullifed cooldown
-        ALICE.assertNodeStatus(Manager.NodeStatus.Active);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Active);
         assertEq(ALICE.cooldownStart(), 0);
 
         // Deactive Alice
         ALICE.deactivateNode();
 
         // Assert Alice status and nullified cooldown
-        ALICE.assertNodeStatus(Manager.NodeStatus.Inactive);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Inactive);
         assertEq(ALICE.cooldownStart(), 0);
 
         // Re-register Alice
         ALICE.registerNode(address(ALICE));
 
         // Assert Alice status and new cooldown
-        ALICE.assertNodeStatus(Manager.NodeStatus.Registered);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Registered);
         uint256 newCooldownStart = startTimestamp + MANAGER.cooldown();
         assertEq(ALICE.cooldownStart(), newCooldownStart);
 
         // Expect re-activation to fail if not administering full cooldown
         vm.warp(newCooldownStart + MANAGER.cooldown() - 1 seconds);
-        vm.expectRevert(abi.encodeWithSelector(Manager.CooldownActive.selector, newCooldownStart));
+        vm.expectRevert(abi.encodeWithSelector(NodeManager.CooldownActive.selector, newCooldownStart));
         ALICE.activateNode();
 
         // Expect re-activation to succeed if complying with new cooldown
@@ -300,7 +308,7 @@ contract ManagerTest is Test, IManagerEvents {
         ALICE.activateNode();
 
         // Assert Alice status and new cooldown
-        ALICE.assertNodeStatus(Manager.NodeStatus.Active);
+        ALICE.assertNodeStatus(NodeManager.NodeStatus.Active);
         assertEq(ALICE.cooldownStart(), 0);
     }
 }

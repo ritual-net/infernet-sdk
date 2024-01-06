@@ -2,7 +2,8 @@
 pragma solidity ^0.8.4;
 
 import {Test} from "forge-std/Test.sol";
-import {Manager} from "../src/Manager.sol";
+import {NodeManager} from "../src/NodeManager.sol";
+import {Registry} from "../src/Registry.sol";
 import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
@@ -12,6 +13,7 @@ import {MockBaseConsumer} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {MockCallbackConsumer} from "./mocks/consumer/Callback.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
+import {DeploymentFixture} from "./mocks/DeploymentFixture.sol";
 
 /// @title ICoordinatorEvents
 /// @notice Events emitted by Coordinator
@@ -55,7 +57,7 @@ abstract contract CoordinatorConstants {
 
 /// @title CoordinatorTest
 /// @notice Base setup to inherit for Coordinator subtests
-abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents {
+abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents, DeploymentFixture {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
@@ -84,13 +86,15 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
 
     function setUp() public {
         // Initialize coordinator
-        COORDINATOR = new Coordinator();
+        (, address managerAddr, address coordinatorAddr,) = deployInfernet();
+        COORDINATOR = Coordinator(coordinatorAddr);
+        NodeManager manager = NodeManager(managerAddr);
 
         // Initalize mock nodes
         // Forcefully cast to EIP712Coordinator (not using additional functionality in current tests)
-        ALICE = new MockNode(EIP712Coordinator(address(COORDINATOR)));
-        BOB = new MockNode(EIP712Coordinator(address(COORDINATOR)));
-        CHARLIE = new MockNode(EIP712Coordinator(address(COORDINATOR)));
+        ALICE = new MockNode(EIP712Coordinator(address(COORDINATOR)), manager);
+        BOB = new MockNode(EIP712Coordinator(address(COORDINATOR)), manager);
+        CHARLIE = new MockNode(EIP712Coordinator(address(COORDINATOR)), manager);
 
         // For each node
         MockNode[3] memory nodes = [ALICE, BOB, CHARLIE];
@@ -101,19 +105,15 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
             // Activate node
             vm.warp(0);
             node.registerNode(address(node));
-            vm.warp(COORDINATOR.cooldown());
+            vm.warp(manager.cooldown());
             node.activateNode();
         }
 
         // Initialize mock callback consumer
-        CALLBACK = new MockCallbackConsumer(
-            address(COORDINATOR)
-        );
+        CALLBACK = new MockCallbackConsumer(address(COORDINATOR));
 
         // Initialize mock subscription consumer
-        SUBSCRIPTION = new MockSubscriptionConsumer(
-            address(COORDINATOR)
-        );
+        SUBSCRIPTION = new MockSubscriptionConsumer(address(COORDINATOR));
     }
 }
 
@@ -652,7 +652,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         );
 
         // Attempt to deliver from non-node
-        vm.expectRevert(Manager.NodeNotActive.selector);
+        vm.expectRevert(NodeManager.NodeNotActive.selector);
         COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 

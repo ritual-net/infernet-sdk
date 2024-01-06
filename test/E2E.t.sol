@@ -4,13 +4,16 @@ pragma solidity ^0.8.4;
 import {Test} from "forge-std/Test.sol";
 import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
+import {NodeManager} from "../src/NodeManager.sol";
+import {Registry} from "../src/Registry.sol";
 import {BalanceScale} from "./ezkl/BalanceScale.sol";
 import {DataAttestation} from "./ezkl/DataAttestor.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
+import {DeploymentFixture} from "./mocks/DeploymentFixture.sol";
 
 /// @title BalanceScaleTest
 /// @notice Tests BalanceScale E2E demo implementation
-contract BalanceScaleTest is Test {
+contract BalanceScaleTest is Test, DeploymentFixture {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
@@ -32,11 +35,13 @@ contract BalanceScaleTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Setup coordinator
-        COORDINATOR = new EIP712Coordinator();
+        // Initialize coordinator
+        (, address managerAddr,, address coordinatorAddr) = deployInfernet();
+        NodeManager manager = NodeManager(managerAddr);
+        COORDINATOR = EIP712Coordinator(coordinatorAddr);
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
-        address balanceScaleAddr = 0x0F8458E544c9D4C7C25A881240727209caae20B8;
+        address balanceScaleAddr = 0x87B2d08110B7D50861141D7bBDd49326af3Ecb31;
 
         // Setup input parameters for attestor contract
         // Contract address to staticcall (our consumer contract, in this case, address(BalanceScale))
@@ -63,32 +68,23 @@ contract BalanceScaleTest is Test {
         }
 
         // Initialize new attestor contract with BalanceScale view-only fn parameters
-        ATTESTOR = new DataAttestation(
-            _contractAddresses,
-            _calldata,
-            _decimals,
-            _scales,
-            0,
-            address(this)
-        );
+        ATTESTOR = new DataAttestation(_contractAddresses, _calldata, _decimals, _scales, 0, address(this));
 
         // Deploy verifier contract
         // Uses compiled artifacts directly from ~ROOT/out
         address VERIFIER = deployCode("Verifier.sol:Halo2Verifier");
 
         // Setup mock node (ALICE) and move to NodeStatus.Active
-        ALICE = new MockNode(COORDINATOR);
+        ALICE = new MockNode(COORDINATOR, manager);
         vm.warp(0);
         ALICE.registerNode(address(ALICE));
-        vm.warp(COORDINATOR.cooldown());
+        vm.warp(manager.cooldown());
         ALICE.activateNode();
 
         // Setup balance scale contract
-        BALANCE_SCALE = new BalanceScale(
-            address(COORDINATOR),
-            address(ATTESTOR),
-            VERIFIER
-        );
+        BALANCE_SCALE = new BalanceScale(address(COORDINATOR), address(ATTESTOR), VERIFIER);
+
+        require(balanceScaleAddr == address(BALANCE_SCALE), "the predicted address of BalanceScale is incorrect");
     }
 
     /*//////////////////////////////////////////////////////////////
