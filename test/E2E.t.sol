@@ -2,7 +2,6 @@
 pragma solidity ^0.8.4;
 
 import {Test} from "forge-std/Test.sol";
-import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {BalanceScale} from "./ezkl/BalanceScale.sol";
 import {DataAttestation} from "./ezkl/DataAttestor.sol";
@@ -36,7 +35,8 @@ contract BalanceScaleTest is Test {
         COORDINATOR = new EIP712Coordinator();
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
-        address balanceScaleAddr = 0x0F8458E544c9D4C7C25A881240727209caae20B8;
+        uint256 currentNonce = vm.getNonce(address(this));
+        address balanceScaleAddr = vm.computeCreateAddress(address(this), currentNonce + 3);
 
         // Setup input parameters for attestor contract
         // Contract address to staticcall (our consumer contract, in this case, address(BalanceScale))
@@ -63,14 +63,7 @@ contract BalanceScaleTest is Test {
         }
 
         // Initialize new attestor contract with BalanceScale view-only fn parameters
-        ATTESTOR = new DataAttestation(
-            _contractAddresses,
-            _calldata,
-            _decimals,
-            _scales,
-            0,
-            address(this)
-        );
+        ATTESTOR = new DataAttestation(_contractAddresses, _calldata, _decimals, _scales, 0, address(this));
 
         // Deploy verifier contract
         // Uses compiled artifacts directly from ~ROOT/out
@@ -84,11 +77,7 @@ contract BalanceScaleTest is Test {
         ALICE.activateNode();
 
         // Setup balance scale contract
-        BALANCE_SCALE = new BalanceScale(
-            address(COORDINATOR),
-            address(ATTESTOR),
-            VERIFIER
-        );
+        BALANCE_SCALE = new BalanceScale(address(COORDINATOR), address(ATTESTOR), VERIFIER);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -110,9 +99,8 @@ contract BalanceScaleTest is Test {
 
         // Get new subscription
         uint32 subscriptionId = 1;
-        LibStruct.Subscription memory sub = LibStruct.getSubscription(COORDINATOR, subscriptionId);
-
-        (int256[4] memory features) = abi.decode(sub.inputs, (int256[4]));
+        bytes memory containerInputs = BALANCE_SCALE.getContainerInputs(subscriptionId, 0, 0, address(0));
+        (int256[4] memory features) = abi.decode(containerInputs, (int256[4]));
         for (uint8 i = 0; i < 4; i++) {
             // Assert features are correctly stored
             assertEq(inputs[i], features[i]);

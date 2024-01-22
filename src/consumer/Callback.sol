@@ -5,8 +5,15 @@ import {BaseConsumer} from "./Base.sol";
 
 /// @title CallbackConsumer
 /// @notice Allows creating one-time requests for off-chain container compute, delivered via callback
-/// @dev Inherits `BaseConsumer` to inherit functions to receive container compute responses
+/// @dev Inherits `BaseConsumer` to inherit functions to receive container compute responses and emit container inputs
 abstract contract CallbackConsumer is BaseConsumer {
+    /*//////////////////////////////////////////////////////////////
+                                MUTABLE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice subscriptionId => callback input data
+    mapping(uint32 => bytes) internal subscriptionInputs;
+
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -36,14 +43,39 @@ abstract contract CallbackConsumer is BaseConsumer {
         uint16 redundancy
     ) internal returns (uint32) {
         // Create one-time subscription at coordinator
-        return COORDINATOR.createSubscription(
+        uint32 subscriptionId = COORDINATOR.createSubscription(
             containerId,
-            inputs,
             maxGasPrice,
             maxGasLimit,
             1, // frequency == 1, one-time subscription
             0, // period == 0, available to be responded to immediately
             redundancy
         );
+
+        // Store inputs by subscriptionId (to be retrieved by off-chain Infernet nodes)
+        subscriptionInputs[subscriptionId] = inputs;
+
+        // Return subscriptionId
+        return subscriptionId;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           OVERRIDE FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice View function to broadcast dynamic container inputs to off-chain Infernet nodes
+    /// @dev Modified from `BaseConsumer` to expose callback input data, indexed by subscriptionId
+    /// @param subscriptionId subscription ID to collect container inputs for
+    /// @param interval subscription interval to collect container inputs for
+    /// @param timestamp timestamp at which container inputs are collected
+    /// @param caller calling address
+    function getContainerInputs(uint32 subscriptionId, uint32 interval, uint32 timestamp, address caller)
+        external
+        view
+        override
+        returns (bytes memory)
+    {
+        // {interval, timestamp, caller} unnecessary for simple callback request
+        return subscriptionInputs[subscriptionId];
     }
 }
