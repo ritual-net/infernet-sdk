@@ -31,6 +31,9 @@ abstract contract CoordinatorConstants {
     /// @notice Mock compute container ID
     string constant MOCK_CONTAINER_ID = "container";
 
+    /// @notice Mock compute container ID hashed
+    bytes32 constant HASHED_MOCK_CONTAINER_ID = keccak256(abi.encode(MOCK_CONTAINER_ID));
+
     /// @notice Mock container inputs
     bytes constant MOCK_CONTAINER_INPUTS = "inputs";
 
@@ -44,13 +47,9 @@ abstract contract CoordinatorConstants {
     /// @notice Mock delivered proof
     bytes constant MOCK_PROOF = "proof";
 
-    /// @notice Cold cost of CallbackConsumer.rawReceiveCompute
+    /// @notice Cold cost of {CallbackConsumer, SubscriptionConsumer}.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 constant COLD_DELIVERY_COST_CALLBACK = 115_076 wei;
-
-    /// @notice Cold cost of SubscriptionConsumer.rawReceiveCompute
-    /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 constant COLD_DELIVERY_COST_SUBSCRIPTION = 115_160 wei;
+    uint32 constant COLD_DELIVERY_COST = 115_160 wei;
 }
 
 /// @title CoordinatorTest
@@ -106,14 +105,10 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         }
 
         // Initialize mock callback consumer
-        CALLBACK = new MockCallbackConsumer(
-            address(COORDINATOR)
-        );
+        CALLBACK = new MockCallbackConsumer(address(COORDINATOR));
 
         // Initialize mock subscription consumer
-        SUBSCRIPTION = new MockSubscriptionConsumer(
-            address(COORDINATOR)
-        );
+        SUBSCRIPTION = new MockSubscriptionConsumer(address(COORDINATOR));
     }
 }
 
@@ -183,8 +178,10 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         assertEq(sub.maxGasLimit, 100_000);
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
-        assertEq(sub.containerId, MOCK_CONTAINER_ID);
-        assertEq(sub.inputs, MOCK_CONTAINER_INPUTS);
+        assertEq(sub.containerId, HASHED_MOCK_CONTAINER_ID);
+
+        // Assert subscription inputs are correctly stord
+        assertEq(CALLBACK.getContainerInputs(actual, 0, 0, address(0)), MOCK_CONTAINER_INPUTS);
     }
 
     /// @notice Cannot deliver callback response if maxGasPrice too low
@@ -220,7 +217,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
             MOCK_CONTAINER_ID,
             MOCK_CONTAINER_INPUTS,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_CALLBACK,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             1
         );
 
@@ -248,7 +245,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
             MOCK_CONTAINER_ID,
             MOCK_CONTAINER_INPUTS,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_CALLBACK,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             redundancy
         );
 
@@ -278,7 +275,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
             MOCK_CONTAINER_ID,
             MOCK_CONTAINER_INPUTS,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_CALLBACK,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             redundancy
         );
 
@@ -296,7 +293,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
             MOCK_CONTAINER_ID,
             MOCK_CONTAINER_INPUTS,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_CALLBACK - 100,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST - 100,
             1
         );
 
@@ -309,7 +306,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
     /// @notice Callback gas limit constant is approximately correct
     function testCallbackGasLimitIsApproximatelyCorrect() public {
         // Calculate approximate expected gas consumed
-        uint256 expectedGasConsumed = uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_CALLBACK;
+        uint256 expectedGasConsumed = uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST;
         uint256 threePercentDelta = ((expectedGasConsumed * 103) / 100) - expectedGasConsumed;
 
         // Create new callback request with appropriate maxGasLimit
@@ -318,7 +315,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
             MOCK_CONTAINER_ID,
             MOCK_CONTAINER_INPUTS,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_CALLBACK,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             1
         );
 
@@ -349,12 +346,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     function testCanCancelSubscription() public {
         // Create subscription
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
-            3,
-            1 minutes,
-            1
+            MOCK_CONTAINER_ID, 1 gwei, uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST, 3, 1 minutes, 1
         );
 
         // Cancel subscription and expect event emission
@@ -368,12 +360,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         // Create subscription
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
-            3,
-            1 minutes,
-            1
+            MOCK_CONTAINER_ID, 1 gwei, uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST, 3, 1 minutes, 1
         );
 
         // Fulfill at least once
@@ -395,12 +382,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     function testCannotCancelCancelledSubscription() public {
         // Create and cancel subscription
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
-            3,
-            1 minutes,
-            1
+            MOCK_CONTAINER_ID, 1 gwei, uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST, 3, 1 minutes, 1
         );
         SUBSCRIPTION.cancelMockSubscription(subId);
 
@@ -416,7 +398,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
             MOCK_CONTAINER_ID,
             MOCK_CONTAINER_INPUTS,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             1
         );
 
@@ -478,12 +460,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         // Create new subscription at time = 0
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
-            3,
-            1 minutes,
-            1
+            MOCK_CONTAINER_ID, 1 gwei, uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST, 3, 1 minutes, 1
         );
 
         // Expect subscription to be inactive till time = 60
@@ -505,7 +482,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1
@@ -537,7 +514,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1
@@ -560,7 +537,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1
@@ -579,7 +556,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1
@@ -598,7 +575,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             2 // redundancy = 2
@@ -623,7 +600,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             2 // redundancy = 2
@@ -645,7 +622,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             2 // redundancy = 2
@@ -663,7 +640,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION - 100 wei,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST - 100 wei,
             2, // frequency = 2
             1 minutes,
             2 // redundancy = 2
@@ -678,7 +655,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     /// @notice Subscription gas limit constant is approximately correct
     function testSubscriptionGasLimitIsApproximatelyCorrect() public {
         // Calculate approximate expected gas consumed
-        uint256 expectedGasConsumed = uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION;
+        uint256 expectedGasConsumed = uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST;
         uint256 threePercentDelta = ((expectedGasConsumed * 103) / 100) - expectedGasConsumed;
 
         // Create new subscription request with appropriate maxGasLimit
@@ -686,7 +663,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST_SUBSCRIPTION,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             2 // redundancy = 2

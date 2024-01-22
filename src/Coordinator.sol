@@ -46,12 +46,10 @@ contract Coordinator is Manager {
         /// @dev uint24 is too small at ~16.7M (<30M mainnet gas limit), but uint32 is more than enough (~4.2B wei)
         uint32 maxGasLimit;
         /// @notice Container identifier used by off-chain Infernet nodes to determine which container is used to fulfill a subscription
+        /// @dev Represented as fixed size hash of stringified list of containers
         /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
-        /// @dev Better represented by a string[] type but constrained to string to keep struct and functions simple
-        string containerId;
-        /// @notice Optional container input parameters
-        /// @dev If left empty, off-chain Infernet nodes call public view fn: `BaseConsumer(owner).getContainerInputs()`
-        bytes inputs;
+        /// @dev Better represented by a string[] type but constrained to hash(string) to keep struct and functions simple
+        bytes32 containerId;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -333,7 +331,6 @@ contract Coordinator is Manager {
 
     /// @notice Creates new subscription
     /// @param containerId compute container identifier used by off-chain Infernet node
-    /// @param inputs optional container inputs
     /// @param maxGasPrice max gas price in wei paid by an Infernet node when fulfilling callback
     /// @param maxGasLimit max gas limit in wei paid by an Infernet node in callback tx
     /// @param frequency max number of times to process subscription (i.e, `frequency == 1` is a one-time request)
@@ -342,7 +339,6 @@ contract Coordinator is Manager {
     /// @return subscription ID
     function createSubscription(
         string memory containerId,
-        bytes calldata inputs,
         uint48 maxGasPrice,
         uint32 maxGasLimit,
         uint32 frequency,
@@ -368,8 +364,7 @@ contract Coordinator is Manager {
             maxGasLimit: maxGasLimit,
             frequency: frequency,
             period: period,
-            containerId: containerId,
-            inputs: inputs
+            containerId: keccak256(abi.encode(containerId))
         });
 
         // Emit new subscription

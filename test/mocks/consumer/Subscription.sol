@@ -64,8 +64,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, frequency);
         assertEq(sub.period, period);
-        assertEq(sub.containerId, containerId);
-        assertEq(sub.inputs, "");
+        assertEq(sub.containerId, keccak256(abi.encode(containerId)));
 
         // Explicitly return subscription ID
         return actualSubscriptionID;
@@ -80,7 +79,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
 
         // Get subscription owner & assert zeroed-out
         address expected = address(0);
-        (address actual,,,,,,,,) = COORDINATOR.subscriptions(subscriptionId);
+        (address actual,,,,,,,) = COORDINATOR.subscriptions(subscriptionId);
         assertEq(actual, expected);
     }
 

@@ -5,7 +5,7 @@ import {BaseConsumer} from "./Base.sol";
 
 /// @title SubscriptionConsumer
 /// @notice Allows creating recurring subscriptions for off-chain container compute
-/// @dev Inherits `BaseConsumer` to inherit functions to receive container compute responses
+/// @dev Inherits `BaseConsumer` to inherit functions to receive container compute responses and emit container inputs
 abstract contract SubscriptionConsumer is BaseConsumer {
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -14,24 +14,6 @@ abstract contract SubscriptionConsumer is BaseConsumer {
     /// @notice Initialize new SubscriptionConsumer
     /// @param coordinator coordinator address
     constructor(address coordinator) BaseConsumer(coordinator) {}
-
-    /*//////////////////////////////////////////////////////////////
-                           VIRTUAL FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice View function to broadcast dynamic container inputs to off-chain Infernet nodes
-    /// @dev If `Coordinator.subscription[id].inputs == bytes("")`, a off-chain node will call `getContainerInputs()`
-    ///      to retrieve inputs. Develpers can modify this function to return dynamic inputs
-    /// @param subscriptionId subscription ID to collect container inputs for
-    /// @param interval subscription interval to collect container inputs for
-    /// @param timestamp timestamp at which container inputs are collected
-    /// @param caller calling address
-    function getContainerInputs(uint32 subscriptionId, uint32 interval, uint32 timestamp, address caller)
-        external
-        view
-        virtual
-        returns (bytes memory)
-    {}
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL FUNCTIONS
@@ -53,15 +35,7 @@ abstract contract SubscriptionConsumer is BaseConsumer {
         uint32 period,
         uint16 redundancy
     ) internal returns (uint32) {
-        return COORDINATOR.createSubscription(
-            containerId,
-            "", // Infernet nodes call `getContainerInputs()` to retrieve dynamic inputs
-            maxGasPrice,
-            maxGasLimit,
-            frequency,
-            period,
-            redundancy
-        );
+        return COORDINATOR.createSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy);
     }
 
     /// @notice Cancels a created subscription
