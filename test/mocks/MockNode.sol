@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Registry} from "../../src/Registry.sol";
 import {NodeManager} from "../../src/NodeManager.sol";
-import {MockNodeManager} from "./MockNodeManager.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
 import {EIP712Coordinator} from "../../src/EIP712Coordinator.sol";
 
@@ -11,22 +11,24 @@ import {EIP712Coordinator} from "../../src/EIP712Coordinator.sol";
 /// @dev Inherited functions contain state checks but not event or error checks and do not interrupt parent reverts (with reverting pre-checks)
 contract MockNode is StdAssertions {
     /*//////////////////////////////////////////////////////////////
-                                INTERNAL
+                               IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Node Manager
+    NodeManager internal immutable NODE_MANAGER;
     /// @notice Coordinator
-    EIP712Coordinator internal COORDINATOR;
-    NodeManager internal NODE_MANAGER;
+    EIP712Coordinator internal immutable COORDINATOR;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
     /// Creates new MockNode
-    /// @param _coordinator Coordinator
-    constructor(EIP712Coordinator _coordinator, NodeManager manager) {
-        COORDINATOR = _coordinator;
-        NODE_MANAGER = manager;
+    /// @param registry registry contract
+    constructor(Registry registry) {
+        // Collect Node Manager + Coordinator from registry
+        NODE_MANAGER = NodeManager(registry.NODE_MANAGER());
+        COORDINATOR = EIP712Coordinator(registry.COORDINATOR());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -44,12 +46,6 @@ contract MockNode is StdAssertions {
     function assertNodeStatus(NodeManager.NodeStatus status) public {
         (NodeManager.NodeStatus actual,) = NODE_MANAGER.nodeInfo(address(this));
         assertEq(uint8(actual), uint8(status));
-    }
-
-    /// @notice Checks if node has `NodeStatus.Active` or reverts
-    /// @dev MockManager-only function, thus forced interface
-    function isActiveNode() public view returns (bool) {
-        return MockNodeManager(address(NODE_MANAGER)).isActiveNode();
     }
 
     /*//////////////////////////////////////////////////////////////

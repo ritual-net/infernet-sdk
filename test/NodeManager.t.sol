@@ -6,7 +6,6 @@ import {Registry} from "../src/Registry.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {NodeManager} from "../src/NodeManager.sol";
-import {MockNodeManager} from "./mocks/MockNodeManager.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 
 /// @title INodeManagerEvents
@@ -25,7 +24,7 @@ contract NodeManagerTest is Test, INodeManagerEvents {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice NodeManager
-    MockNodeManager internal NODE_MANAGER;
+    NodeManager internal NODE_MANAGER;
 
     /// @notice Mock node (Alice)
     MockNode internal ALICE;
@@ -46,13 +45,12 @@ contract NodeManagerTest is Test, INodeManagerEvents {
         // Initialize registry
         Registry registry = new Registry(nodeManagerAddress, coordinatorAddress);
 
-        // Initialize mock node manager
-        NODE_MANAGER = new MockNodeManager();
+        // Initialize node manager
+        NODE_MANAGER = new NodeManager();
 
         // Initialize mock nodes
-        // Overriding node manager to parent type of EIP712Coordinator
-        ALICE = new MockNode(EIP712Coordinator(address(registry)), NODE_MANAGER);
-        BOB = new MockNode(EIP712Coordinator(address(registry)), NODE_MANAGER);
+        ALICE = new MockNode(registry);
+        BOB = new MockNode(registry);
     }
 
     /*//////////////////////////////////////////////////////////////
