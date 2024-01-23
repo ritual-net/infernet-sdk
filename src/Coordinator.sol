@@ -162,6 +162,18 @@ contract Coordinator {
     error SubscriptionNotActive();
 
     /*//////////////////////////////////////////////////////////////
+                               MODIFIERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Allow only callers that are active nodes
+    modifier onlyActiveNode() {
+        if (!NODE_MANAGER.isActiveNode(msg.sender)) {
+            revert NodeNotActive();
+        }
+        _;
+    }
+
+    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
@@ -452,12 +464,7 @@ contract Coordinator {
         bytes calldata input,
         bytes calldata output,
         bytes calldata proof
-    ) external {
-        // Allow only callers that are active nodes
-        if (!NODE_MANAGER.isActiveNode(msg.sender)) {
-            revert NodeNotActive();
-        }
-
+    ) external onlyActiveNode {
         _deliverComputeWithOverhead(subscriptionId, deliveryInterval, input, output, proof, 0);
     }
 }

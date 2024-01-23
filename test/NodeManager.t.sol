@@ -4,9 +4,7 @@ pragma solidity ^0.8.4;
 import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
 import {MockNode} from "./mocks/MockNode.sol";
-import {Ownable} from "solady/auth/Ownable.sol";
 import {NodeManager} from "../src/NodeManager.sol";
-import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 
 /// @title INodeManagerEvents
 /// @notice Events emitted by NodeManager
@@ -37,16 +35,13 @@ contract NodeManagerTest is Test, INodeManagerEvents {
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Precompute addresses for {NodeManager, Coordinator}
-        uint256 registryDeployNonce = 1;
-        address nodeManagerAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 1);
-        address coordinatorAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 2);
-
-        // Initialize registry
-        Registry registry = new Registry(nodeManagerAddress, coordinatorAddress);
-
         // Initialize node manager
         NODE_MANAGER = new NodeManager();
+
+        // Initialize registry w/ node manager address + dummy coordinator
+        // Deploy ordering irrelevant since NodeManager does not consume registry
+        // Allows for isolated testing of just NodeManager
+        Registry registry = new Registry(address(NODE_MANAGER), address(0));
 
         // Initialize mock nodes
         ALICE = new MockNode(registry);
@@ -224,7 +219,7 @@ contract NodeManagerTest is Test, INodeManagerEvents {
     /// @notice Check registered nodes return false when checking `isActiveNode()`
     function testRegisteredNodesReturnFalseWithIsActiveNode() public {
         ALICE.registerNode(address(ALICE));
-        assertEq(NODE_MANAGER.isActiveNode(addess(ALICE)), false);
+        assertEq(NODE_MANAGER.isActiveNode(address(ALICE)), false);
     }
 
     /// @notice Check that node can go to an inactive state from inactive
