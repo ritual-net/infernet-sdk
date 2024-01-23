@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-/// @title Manager
+/// @title NodeManager
 /// @notice Manages node lifecycle (registration, activation, deactivation)
 /// @dev Allows anyone to register to become an active node
 /// @dev Allows registered nodes to become active after a `cooldown` seconds waiting period
