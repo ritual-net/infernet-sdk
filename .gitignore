@@ -14,6 +14,8 @@ docs/
 # VSCode workspace config
 .vscode/
 
+# IntelliJ IDEA workspace config
+.idea
+
 # OS cache
 .DS_Store
-.idea
