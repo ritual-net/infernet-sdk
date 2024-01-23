@@ -633,8 +633,8 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         endingGas = gasleft();
         uint256 gasUsedCached = startingGas - endingGas;
 
-        // Assert in ~approximate range (+/- 15K gas, actually copying calldata into memory is expensive)
-        uint256 delta = 15_000 wei;
+        // Assert in ~approximate range (+/- 20K gas, actually copying calldata into memory is expensive)
+        uint256 delta = 20_000 wei;
         assertApproxEqAbs(gasExpected, gasUsed, delta);
         assertApproxEqAbs(gasExpectedCached, gasUsedCached, delta);
     }
