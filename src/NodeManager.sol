@@ -6,7 +6,6 @@ pragma solidity ^0.8.4;
 /// @dev Allows anyone to register to become an active node
 /// @dev Allows registered nodes to become active after a `cooldown` seconds waiting period
 /// @dev Allows any node to deactivate itself and return to an inactive state
-/// @dev Exposes an `onlyActiveNode()` modifier used to restrict functions to being called by only active nodes
 /// @dev Restricts addresses to 1 of 3 states: `Inactive`, `Registered`, `Active`
 contract NodeManager {
     /*//////////////////////////////////////////////////////////////
@@ -36,7 +35,7 @@ contract NodeManager {
     /// @dev Enums in Solidity are unsigned integers capped at 256 members, so Inactive is the 0-initialized default
     /// @dev Inactive (0): Default status is inactive; no status
     /// @dev Registered (1): Node has registered to become active, initiating a period of `cooldown`
-    /// @dev Active (2): Node is active, able to fulfill subscriptions, and is part of `modifier(onlyActiveNode)`
+    /// @dev Active (2): Node is active and able to fulfill subscriptions
     enum NodeStatus {
         Inactive,
         Registered,
@@ -83,11 +82,6 @@ contract NodeManager {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown if attempting to call function that requires a node to have status `NodeStatus.Active`
-    /// @dev Only used by `modifier(onlyActiveNode)`
-    /// @dev 4-byte signature: `0x8741cbb8`
-    error NodeNotActive();
-
     /// @notice Thrown by `registerNode()` if attempting to register node with status that is not `NodeStatus.Inactive`
     /// @dev 4-byte signature: `0x5acfd518`
     /// @param node address of node attempting to register
@@ -108,6 +102,12 @@ contract NodeManager {
     /*//////////////////////////////////////////////////////////////
                                FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Allows checking whether `node` is of status `NodeStatus.Active`
+    /// @param node node address to check status
+    function isActiveNode(address node) external view returns (bool) {
+        return nodeInfo[node].status == NodeStatus.Active;
+    }
 
     /// @notice Allows registering a node for activation
     /// @dev First-step of two-step process (followed by `activateNode()`)
