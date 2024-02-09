@@ -33,7 +33,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
 
     /// @notice EIP-712 struct(Subscription) typeHash
     bytes32 private constant EIP712_SUBSCRIPTION_TYPEHASH = keccak256(
-        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId)"
+        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bool lazy)"
     );
 
     /// @notice EIP-712 struct(DelegateSubscription) typeHash
@@ -41,7 +41,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @dev The `nonce` represents the nonce of the subscribing contract (sub-owner); prevents signature replay
     /// @dev The `expiry` is when the delegated subscription signature expires and can no longer be used
     bytes32 private constant EIP712_DELEGATE_SUBSCRIPTION_TYPEHASH = keccak256(
-        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId)"
+        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bool lazy)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -147,7 +147,8 @@ contract EIP712Coordinator is EIP712, Coordinator {
                             sub.redundancy,
                             sub.maxGasPrice,
                             sub.maxGasLimit,
-                            sub.containerId
+                            sub.containerId,
+                            sub.lazy
                         )
                     )
                 )
