@@ -51,10 +51,10 @@ contract BalanceScale is CallbackConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Initialize new BalanceScale
-    /// @param coordinator coordinator address
+    /// @param registry registry address
     /// @param attestor EZKL attestor address
     /// @param verifier EZKL verifier address
-    constructor(address coordinator, address attestor, address verifier) CallbackConsumer(coordinator) {
+    constructor(address registry, address attestor, address verifier) CallbackConsumer(registry) {
         // Initiate attestor contract
         ATTESTOR = DataAttestation(attestor);
         // Set verifier address

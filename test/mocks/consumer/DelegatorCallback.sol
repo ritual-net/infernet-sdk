@@ -12,9 +12,9 @@ contract MockDelegatorCallbackConsumer is Delegator, MockCallbackConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// Create new MockDelegatorCallbackConsumer
-    /// @param _coordinator coordinator address
-    /// @param _signer delegated signer address
-    constructor(address _coordinator, address _signer) MockCallbackConsumer(_coordinator) Delegator(_signer) {}
+    /// @param registry registry address
+    /// @param signer delegated signer address
+    constructor(address registry, address signer) MockCallbackConsumer(registry) Delegator(signer) {}
 
     /*//////////////////////////////////////////////////////////////
                            INHERITED FUNCTIONS

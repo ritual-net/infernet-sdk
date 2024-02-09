@@ -1,48 +1,15 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {BaseConsumer} from "./consumer/Base.sol";
-import {NodeManager} from "./NodeManager.sol";
 import {Registry} from "./Registry.sol";
+import {NodeManager} from "./NodeManager.sol";
+import {BaseConsumer} from "./consumer/Base.sol";
 
 /// @title Coordinator
 /// @notice Coordination layer between consuming smart contracts and off-chain Infernet nodes
 /// @dev Allows creating and deleting `Subscription`(s)
 /// @dev Allows nodes with `NodeManager.NodeStatus.Active` to deliver subscription outputs via off-chain container compute
 contract Coordinator {
-    /*//////////////////////////////////////////////////////////////
-                              IMMUTABLES
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Address of the registry
-    address public immutable REGISTRY;
-    /// @notice Address of the node manager
-    address public immutable NODE_MANAGER;
-
-    /*//////////////////////////////////////////////////////////////
-                              CONSTRUCTOR
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Initialize the registry address
-    /// @param registry address of `Registry` contract
-    constructor(address registry) {
-        REGISTRY = registry;
-        NODE_MANAGER = Registry(registry).NODE_MANAGER();
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Allow only callers that are active nodes
-    modifier onlyActiveNode() {
-        (NodeManager.NodeStatus status,) = NodeManager(NODE_MANAGER).nodeInfo(msg.sender);
-        if (status != NodeManager.NodeStatus.Active) {
-            revert NodeManager.NodeNotActive();
-        }
-        _;
-    }
-
     /*//////////////////////////////////////////////////////////////
                                 STRUCTS
     //////////////////////////////////////////////////////////////*/
@@ -100,6 +67,13 @@ contract Coordinator {
     uint256 public constant DELIVERY_OVERHEAD_WEI = 56_600 wei;
 
     /*//////////////////////////////////////////////////////////////
+                               IMMUTABLE
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Node manager contract (handles node lifecycle)
+    NodeManager internal immutable NODE_MANAGER;
+
+    /*//////////////////////////////////////////////////////////////
                                 MUTABLE
     //////////////////////////////////////////////////////////////*/
 
@@ -115,7 +89,7 @@ contract Coordinator {
     /// @dev Limited to type(Subscription.redundancy) == uint16
     /// @dev Technically, this is not required and we can save an SLOAD if we simply add a uint48 to the subscription
     ///      struct that represents 32 bits of the interval -> 16 bits of redundancy count, reset each interval change
-    ///      But, this is a little over the optimization: readability line and would make Subscriptions harder to grok
+    ///      But, this is a little over the optimization:readability line and would make Subscriptions harder to grok
     mapping(bytes32 => uint16) public redundancyCount;
 
     /// @notice subscriptionID => Subscription
@@ -142,6 +116,10 @@ contract Coordinator {
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Thrown by `deliverCompute()` if delivering tx from inactive node (status != `NodeManager.NodeStatus.Active`)
+    /// @dev 4-byte signature: `0x8741cbb8`
+    error NodeNotActive();
 
     /// @notice Thrown by `deliverComputeWithOverhead()` if delivering tx with gasPrice > subscription maxGasPrice
     /// @dev E.g. submitting tx with gas price `10 gwei` when network basefee is `11 gwei`
@@ -182,6 +160,29 @@ contract Coordinator {
     /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver a subscription before `activeAt`
     /// @dev 4-byte signature: `0xefb74efe`
     error SubscriptionNotActive();
+
+    /*//////////////////////////////////////////////////////////////
+                               MODIFIERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Allow only callers that are active nodes
+    modifier onlyActiveNode() {
+        if (!NODE_MANAGER.isActiveNode(msg.sender)) {
+            revert NodeNotActive();
+        }
+        _;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initializes new Coordinator
+    /// @param registry registry contract
+    constructor(Registry registry) {
+        // Collect node manager contract from registry
+        NODE_MANAGER = NodeManager(registry.NODE_MANAGER());
+    }
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL FUNCTIONS
@@ -249,10 +250,10 @@ contract Coordinator {
             // Store subscription ID to first free slot
             // uint32 automatically consumes full word
             mstore(m, subscriptionId)
-            // Store subscriptions mapping storage slot (4) to 32 byte (1 word) offset
+            // Store subscriptions mapping storage slot (3) to 32 byte (1 word) offset
             mstore(add(m, 0x20), 3)
 
-            // At this point, memory layout [0 -> 0x20 == subscriptionId, 0x20 -> 0x40 == 4]
+            // At this point, memory layout [0 -> 0x20 == subscriptionId, 0x20 -> 0x40 == 3]
             // Calculate mapping storage slot — hash(key, mapping slot)
             // Hash data from 0 -> 0x40 (2 words)
             storageSlot := keccak256(m, 0x40)

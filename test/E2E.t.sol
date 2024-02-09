@@ -2,18 +2,18 @@
 pragma solidity ^0.8.4;
 
 import {Test} from "forge-std/Test.sol";
+import {Registry} from "../src/Registry.sol";
+import {LibDeploy} from "./lib/LibDeploy.sol";
 import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {NodeManager} from "../src/NodeManager.sol";
-import {Registry} from "../src/Registry.sol";
 import {BalanceScale} from "./ezkl/BalanceScale.sol";
 import {DataAttestation} from "./ezkl/DataAttestor.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
-import {DeploymentFixture} from "./mocks/DeploymentFixture.sol";
 
 /// @title BalanceScaleTest
 /// @notice Tests BalanceScale E2E demo implementation
-contract BalanceScaleTest is Test, DeploymentFixture {
+contract BalanceScaleTest is Test {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
@@ -35,18 +35,22 @@ contract BalanceScaleTest is Test, DeploymentFixture {
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Initialize coordinator
-        (, address managerAddr,, address coordinatorAddr) = deployInfernet();
-        NodeManager manager = NodeManager(managerAddr);
-        COORDINATOR = EIP712Coordinator(coordinatorAddr);
+        // Deploy contracts
+        uint256 initialNonce = vm.getNonce(address(this));
+        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator) =
+            LibDeploy.deployContracts(initialNonce);
+
+        // Assign internals
+        COORDINATOR = coordinator;
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
-        address balanceScaleAddr = 0x87B2d08110B7D50861141D7bBDd49326af3Ecb31;
+        initialNonce = vm.getNonce(address(this));
+        address balanceScaleAddress = vm.computeCreateAddress(address(this), initialNonce + 3);
 
         // Setup input parameters for attestor contract
         // Contract address to staticcall (our consumer contract, in this case, address(BalanceScale))
         address[] memory _contractAddresses = new address[](1);
-        _contractAddresses[0] = balanceScaleAddr;
+        _contractAddresses[0] = balanceScaleAddress;
 
         // Function calldata to get int256[4] input parameters
         bytes[][] memory _calldata = new bytes[][](1);
@@ -75,16 +79,17 @@ contract BalanceScaleTest is Test, DeploymentFixture {
         address VERIFIER = deployCode("Verifier.sol:Halo2Verifier");
 
         // Setup mock node (ALICE) and move to NodeStatus.Active
-        ALICE = new MockNode(COORDINATOR, manager);
+        ALICE = new MockNode(registry);
         vm.warp(0);
         ALICE.registerNode(address(ALICE));
-        vm.warp(manager.cooldown());
+        vm.warp(nodeManager.cooldown());
         ALICE.activateNode();
 
         // Setup balance scale contract
-        BALANCE_SCALE = new BalanceScale(address(COORDINATOR), address(ATTESTOR), VERIFIER);
+        BALANCE_SCALE = new BalanceScale(address(registry), address(ATTESTOR), VERIFIER);
 
-        require(balanceScaleAddr == address(BALANCE_SCALE), "the predicted address of BalanceScale is incorrect");
+        // Ensure balance scale contract address matches up
+        assertEq(address(BALANCE_SCALE), balanceScaleAddress);
     }
 
     /*//////////////////////////////////////////////////////////////
