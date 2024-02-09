@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {Manager} from "../../src/Manager.sol";
-import {MockManager} from "./MockManager.sol";
+import {Registry} from "../../src/Registry.sol";
+import {NodeManager} from "../../src/NodeManager.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
 import {EIP712Coordinator} from "../../src/EIP712Coordinator.sol";
 
@@ -11,20 +11,24 @@ import {EIP712Coordinator} from "../../src/EIP712Coordinator.sol";
 /// @dev Inherited functions contain state checks but not event or error checks and do not interrupt parent reverts (with reverting pre-checks)
 contract MockNode is StdAssertions {
     /*//////////////////////////////////////////////////////////////
-                                INTERNAL
+                               IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Node Manager
+    NodeManager internal immutable NODE_MANAGER;
     /// @notice Coordinator
-    EIP712Coordinator internal COORDINATOR;
+    EIP712Coordinator internal immutable COORDINATOR;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
     /// Creates new MockNode
-    /// @param _coordinator Coordinator
-    constructor(EIP712Coordinator _coordinator) {
-        COORDINATOR = _coordinator;
+    /// @param registry registry contract
+    constructor(Registry registry) {
+        // Collect Node Manager + Coordinator from registry
+        NODE_MANAGER = NodeManager(registry.NODE_MANAGER());
+        COORDINATOR = EIP712Coordinator(registry.COORDINATOR());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -33,21 +37,15 @@ contract MockNode is StdAssertions {
 
     /// @notice Returns node cooldown start timestamp
     function cooldownStart() public view returns (uint32) {
-        (, uint32 startTimestamp) = COORDINATOR.nodeInfo(address(this));
+        (, uint32 startTimestamp) = NODE_MANAGER.nodeInfo(address(this));
         return startTimestamp;
     }
 
     /// @notice Asserts node status against status to check
     /// @param status status to check
-    function assertNodeStatus(Manager.NodeStatus status) public {
-        (Manager.NodeStatus actual,) = COORDINATOR.nodeInfo(address(this));
+    function assertNodeStatus(NodeManager.NodeStatus status) public {
+        (NodeManager.NodeStatus actual,) = NODE_MANAGER.nodeInfo(address(this));
         assertEq(uint8(actual), uint8(status));
-    }
-
-    /// @notice Checks if node has `NodeStatus.Active` or reverts
-    /// @dev MockManager-only function, thus forced interface
-    function isActiveNode() public view returns (bool) {
-        return MockManager(address(COORDINATOR)).isActiveNode();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -60,11 +58,11 @@ contract MockNode is StdAssertions {
     function registerNode(address node) external {
         // Initialize registration
         uint256 currentTimestamp = block.timestamp;
-        COORDINATOR.registerNode(node);
+        NODE_MANAGER.registerNode(node);
 
         // Check status
-        (Manager.NodeStatus status, uint32 cds) = COORDINATOR.nodeInfo(address(this));
-        assertEq(uint8(status), uint8(Manager.NodeStatus.Registered));
+        (NodeManager.NodeStatus status, uint32 cds) = NODE_MANAGER.nodeInfo(address(this));
+        assertEq(uint8(status), uint8(NodeManager.NodeStatus.Registered));
 
         // Ensure cooldown start timestamp conforms to current timestamp
         assertEq(currentTimestamp, cds);
@@ -74,10 +72,10 @@ contract MockNode is StdAssertions {
     /// @dev Checks status change to `NodeStatus.Active`
     /// @dev Checks node cooldown start timestamp is zeroed out
     function activateNode() external {
-        COORDINATOR.activateNode();
+        NODE_MANAGER.activateNode();
 
         // Check status
-        assertNodeStatus(Manager.NodeStatus.Active);
+        assertNodeStatus(NodeManager.NodeStatus.Active);
         // Ensure cooldown start timestamp is nullified
         assertEq(cooldownStart(), 0);
     }
@@ -86,10 +84,10 @@ contract MockNode is StdAssertions {
     /// @dev Checks status change to `NodeStatus.Inactive`
     /// @dev Checks node cooldown start timestamp is zeroed out
     function deactivateNode() external {
-        COORDINATOR.deactivateNode();
+        NODE_MANAGER.deactivateNode();
 
         // Check status
-        assertNodeStatus(Manager.NodeStatus.Inactive);
+        assertNodeStatus(NodeManager.NodeStatus.Inactive);
         // Ensure cooldown start timestamp is nullified
         assertEq(cooldownStart(), 0);
     }

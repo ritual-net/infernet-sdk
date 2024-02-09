@@ -19,8 +19,8 @@ abstract contract CallbackConsumer is BaseConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Initialize new CallbackConsumer
-    /// @param coordinator coordinator address
-    constructor(address coordinator) BaseConsumer(coordinator) {}
+    /// @param registry registry address
+    constructor(address registry) BaseConsumer(registry) {}
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL FUNCTIONS

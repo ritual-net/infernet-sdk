@@ -21,8 +21,8 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     //////////////////////////////////////////////////////////////*/
 
     /// Create new MockSubscriptionConsumer
-    /// @param _coordinator coordinator address
-    constructor(address _coordinator) SubscriptionConsumer(_coordinator) {}
+    /// @param registry registry address
+    constructor(address registry) SubscriptionConsumer(registry) {}
 
     /*//////////////////////////////////////////////////////////////
                            UTILITY FUNCTIONS

@@ -2,7 +2,11 @@
 pragma solidity ^0.8.4;
 
 import {Test} from "forge-std/Test.sol";
+import {Registry} from "../src/Registry.sol";
+import {LibDeploy} from "./lib/LibDeploy.sol";
+import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
+import {NodeManager} from "../src/NodeManager.sol";
 import {BalanceScale} from "./ezkl/BalanceScale.sol";
 import {DataAttestation} from "./ezkl/DataAttestor.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
@@ -31,17 +35,22 @@ contract BalanceScaleTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Setup coordinator
-        COORDINATOR = new EIP712Coordinator();
+        // Deploy contracts
+        uint256 initialNonce = vm.getNonce(address(this));
+        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator) =
+            LibDeploy.deployContracts(initialNonce);
+
+        // Assign internals
+        COORDINATOR = coordinator;
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
-        uint256 currentNonce = vm.getNonce(address(this));
-        address balanceScaleAddr = vm.computeCreateAddress(address(this), currentNonce + 3);
+        initialNonce = vm.getNonce(address(this));
+        address balanceScaleAddress = vm.computeCreateAddress(address(this), initialNonce + 3);
 
         // Setup input parameters for attestor contract
         // Contract address to staticcall (our consumer contract, in this case, address(BalanceScale))
         address[] memory _contractAddresses = new address[](1);
-        _contractAddresses[0] = balanceScaleAddr;
+        _contractAddresses[0] = balanceScaleAddress;
 
         // Function calldata to get int256[4] input parameters
         bytes[][] memory _calldata = new bytes[][](1);
@@ -70,14 +79,17 @@ contract BalanceScaleTest is Test {
         address VERIFIER = deployCode("Verifier.sol:Halo2Verifier");
 
         // Setup mock node (ALICE) and move to NodeStatus.Active
-        ALICE = new MockNode(COORDINATOR);
+        ALICE = new MockNode(registry);
         vm.warp(0);
         ALICE.registerNode(address(ALICE));
-        vm.warp(COORDINATOR.cooldown());
+        vm.warp(nodeManager.cooldown());
         ALICE.activateNode();
 
         // Setup balance scale contract
-        BALANCE_SCALE = new BalanceScale(address(COORDINATOR), address(ATTESTOR), VERIFIER);
+        BALANCE_SCALE = new BalanceScale(address(registry), address(ATTESTOR), VERIFIER);
+
+        // Ensure balance scale contract address matches up
+        assertEq(address(BALANCE_SCALE), balanceScaleAddress);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -110,9 +110,8 @@ Prefer `private` > `internal` > `external` > `public`, to best discretion.
 
 ### Constructor
 
-1. Start constructor parameters with `_underscore`
-2. Prefer typed contract inheritance (eg `Type myContract` over `address myContractAddress`)
-3. Ignore (2) when setting up developer-facing interfaces. It's easier for developers to not have to worry about the initialization.
+1. Prefer typed contract inheritance (eg `Type myContract` over `address myContractAddress`)
+2. Ignore (2) when setting up developer-facing interfaces. It's easier for developers to not have to worry about the initialization.
 
 ### Errors
 

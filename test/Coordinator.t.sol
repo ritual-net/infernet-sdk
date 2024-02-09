@@ -2,10 +2,10 @@
 pragma solidity ^0.8.4;
 
 import {Test} from "forge-std/Test.sol";
-import {Manager} from "../src/Manager.sol";
+import {Registry} from "../src/Registry.sol";
 import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
-import {Ownable} from "solady/auth/Ownable.sol";
+import {NodeManager} from "../src/NodeManager.sol";
 import {Coordinator} from "../src/Coordinator.sol";
 import {BaseConsumer} from "../src/consumer/Base.sol";
 import {MockBaseConsumer} from "./mocks/consumer/Base.sol";
@@ -82,14 +82,26 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Initialize coordinator
-        COORDINATOR = new Coordinator();
+        // Precompute contract addresses
+        uint256 registryDeployNonce = vm.getNonce(address(this));
+        address nodeManagerAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 1);
+        address coordinatorAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 2);
+
+        // Deploy registry
+        Registry registry = new Registry(nodeManagerAddress, coordinatorAddress);
+
+        // Deploy node manager + coordinator
+        NodeManager nodeManager = new NodeManager();
+        COORDINATOR = new Coordinator(registry);
+
+        // Assert correct precomputed deployments
+        assertEq(registry.NODE_MANAGER(), address(nodeManager));
+        assertEq(registry.COORDINATOR(), address(COORDINATOR));
 
         // Initalize mock nodes
-        // Forcefully cast to EIP712Coordinator (not using additional functionality in current tests)
-        ALICE = new MockNode(EIP712Coordinator(address(COORDINATOR)));
-        BOB = new MockNode(EIP712Coordinator(address(COORDINATOR)));
-        CHARLIE = new MockNode(EIP712Coordinator(address(COORDINATOR)));
+        ALICE = new MockNode(registry);
+        BOB = new MockNode(registry);
+        CHARLIE = new MockNode(registry);
 
         // For each node
         MockNode[3] memory nodes = [ALICE, BOB, CHARLIE];
@@ -100,15 +112,15 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
             // Activate node
             vm.warp(0);
             node.registerNode(address(node));
-            vm.warp(COORDINATOR.cooldown());
+            vm.warp(nodeManager.cooldown());
             node.activateNode();
         }
 
         // Initialize mock callback consumer
-        CALLBACK = new MockCallbackConsumer(address(COORDINATOR));
+        CALLBACK = new MockCallbackConsumer(address(registry));
 
         // Initialize mock subscription consumer
-        SUBSCRIPTION = new MockSubscriptionConsumer(address(COORDINATOR));
+        SUBSCRIPTION = new MockSubscriptionConsumer(address(registry));
     }
 }
 
@@ -629,7 +641,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         );
 
         // Attempt to deliver from non-node
-        vm.expectRevert(Manager.NodeNotActive.selector);
+        vm.expectRevert(Coordinator.NodeNotActive.selector);
         COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 

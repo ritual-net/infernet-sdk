@@ -3,9 +3,12 @@ pragma solidity ^0.8.4;
 
 import {Test} from "forge-std/Test.sol";
 import {LibSign} from "./lib/LibSign.sol";
+import {Registry} from "../src/Registry.sol";
+import {LibDeploy} from "./lib/LibDeploy.sol";
 import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Coordinator} from "../src/Coordinator.sol";
+import {NodeManager} from "../src/NodeManager.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {ICoordinatorEvents, CoordinatorConstants} from "./Coordinator.t.sol";
 import {MockDelegatorCallbackConsumer} from "./mocks/consumer/DelegatorCallback.sol";
@@ -55,12 +58,17 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Initialize coordinator
-        COORDINATOR = new EIP712Coordinator();
+        // Initialize contracts
+        uint256 initialNonce = vm.getNonce(address(this));
+        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator) =
+            LibDeploy.deployContracts(initialNonce);
+
+        // Assign to internal
+        COORDINATOR = coordinator;
 
         // Initalize mock nodes
-        ALICE = new MockNode(COORDINATOR);
-        BOB = new MockNode(COORDINATOR);
+        ALICE = new MockNode(registry);
+        BOB = new MockNode(registry);
 
         // For each node
         MockNode[2] memory nodes = [ALICE, BOB];
@@ -71,7 +79,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
             // Activate nodes
             vm.warp(0);
             node.registerNode(address(node));
-            vm.warp(COORDINATOR.cooldown());
+            vm.warp(nodeManager.cooldown());
             node.activateNode();
         }
 
@@ -84,7 +92,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         BACKUP_DELEGATEE_ADDRESS = vm.addr(BACKUP_DELEGATEE_PRIVATE_KEY);
 
         // Initialize mock callback consumer w/ assigned delegate
-        CALLBACK = new MockDelegatorCallbackConsumer(address(COORDINATOR), DELEGATEE_ADDRESS);
+        CALLBACK = new MockDelegatorCallbackConsumer(address(registry), DELEGATEE_ADDRESS);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -462,6 +470,32 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Ensure subscription completion is tracked
         bytes32 key = keccak256(abi.encode(subscriptionId, deliveryInterval, address(ALICE)));
         assertEq(COORDINATOR.nodeResponded(key), true);
+    }
+
+    /// @notice Cannot delegated deliver compute response from non-active node
+    function testCannotDeliverOutputFromNonActiveNode() public {
+        // Starting nonce
+        uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
+
+        // Create new dummy subscription
+        Coordinator.Subscription memory sub = getMockSubscription();
+
+        // Generate signature expiry
+        uint32 expiry = uint32(block.timestamp) + 30 minutes;
+
+        // Get EIP-712 typed message
+        bytes32 message = getMessage(nonce, expiry, sub);
+
+        // Sign message from delegatee private key
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
+
+        // Create subscription and deliver response, via deliverComputeDelegatee
+        // Deliver from address(this), which is not a registered node
+        uint32 deliveryInterval = 1;
+        vm.expectRevert(Coordinator.NodeNotActive.selector);
+        COORDINATOR.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+        );
     }
 
     /// @notice Cannot delegated deliver compute response for completed subscription

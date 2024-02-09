@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Registry} from "../Registry.sol";
 import {Coordinator} from "../Coordinator.sol";
 
 /// @title BaseConsumer
@@ -30,10 +31,10 @@ abstract contract BaseConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Initialize new BaseConsumer
-    /// @param coordinator coordinator address
-    constructor(address coordinator) {
-        // Setup Coordinator
-        COORDINATOR = Coordinator(coordinator);
+    /// @param registry registry address
+    constructor(address registry) {
+        // Setup Coordinator (via address from canonical registry)
+        COORDINATOR = Coordinator(Registry(registry).COORDINATOR());
     }
 
     /*//////////////////////////////////////////////////////////////

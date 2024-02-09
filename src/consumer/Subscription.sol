@@ -12,8 +12,8 @@ abstract contract SubscriptionConsumer is BaseConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Initialize new SubscriptionConsumer
-    /// @param coordinator coordinator address
-    constructor(address coordinator) BaseConsumer(coordinator) {}
+    /// @param registry registry address
+    constructor(address registry) BaseConsumer(registry) {}
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL FUNCTIONS

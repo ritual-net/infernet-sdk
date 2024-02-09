@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Registry} from "./Registry.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
 import {Coordinator} from "./Coordinator.sol";
 import {EIP712} from "solady/utils/EIP712.sol";
@@ -66,6 +67,14 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @notice Thrown by `createSubscriptionDelegatee()` if signature for delegated subscription has expired
     /// @dev 4-byte signature: `0x0819bdcd`
     error SignatureExpired();
+
+    /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initializes new EIP712Coordinator
+    /// @param registry registry contract
+    constructor(Registry registry) Coordinator(registry) {}
 
     /*//////////////////////////////////////////////////////////////
                            OVERRIDE FUNCTIONS
