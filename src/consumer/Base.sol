@@ -6,6 +6,7 @@ import {Coordinator} from "../Coordinator.sol";
 
 /// @title BaseConsumer
 /// @notice Handles receiving container compute responses from Infernet coordinator
+/// @notice Handles exposing container inputs to Infernet nodes via `getContainerInputs()`
 /// @dev Contains a single public entrypoint `rawReceiveCompute` callable by only the Infernet coordinator. Once
 ///      call origin is verified, parameters are proxied to internal function `_receiveCompute`
 abstract contract BaseConsumer {
@@ -59,6 +60,19 @@ abstract contract BaseConsumer {
         bytes calldata output,
         bytes calldata proof
     ) internal virtual {}
+
+    /// @notice View function to broadcast dynamic container inputs to off-chain Infernet nodes
+    /// @dev Develpers can modify this function to return dynamic inputs
+    /// @param subscriptionId subscription ID to collect container inputs for
+    /// @param interval subscription interval to collect container inputs for
+    /// @param timestamp timestamp at which container inputs are collected
+    /// @param caller calling address
+    function getContainerInputs(uint32 subscriptionId, uint32 interval, uint32 timestamp, address caller)
+        external
+        view
+        virtual
+        returns (bytes memory)
+    {}
 
     /*//////////////////////////////////////////////////////////////
                                FUNCTIONS

@@ -21,8 +21,7 @@ library LibStruct {
         uint32 maxGasLimit;
         uint32 frequency;
         uint32 period;
-        string containerId;
-        bytes inputs;
+        bytes32 containerId;
     }
 
     /// @notice Reexported MockBaseConsumer.DeliveredOutput
@@ -58,13 +57,12 @@ library LibStruct {
             uint16 redundancy,
             uint48 maxGasPrice,
             uint32 maxGasLimit,
-            string memory containerId,
-            bytes memory inputs
+            bytes32 containerId
         ) = coordinator.subscriptions(subscriptionId);
 
         // Return created struct
         return LibStruct.Subscription(
-            activeAt, owner, maxGasPrice, redundancy, maxGasLimit, frequency, period, containerId, inputs
+            activeAt, owner, maxGasPrice, redundancy, maxGasLimit, frequency, period, containerId
         );
     }
 

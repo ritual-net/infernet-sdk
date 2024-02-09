@@ -23,7 +23,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Cold cost of `CallbackConsumer.rawReceiveCompute`
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
     /// @dev Overriden from CoordinatorConstants since state change order forces this to cost ~100 wei more
-    uint32 constant CALLBACK_COST = 115_176 wei;
+    uint32 constant CALLBACK_COST = COLD_DELIVERY_COST + 100 wei;
 
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
@@ -110,8 +110,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
                 + uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()),
             frequency: 1,
             period: 0,
-            containerId: MOCK_CONTAINER_ID,
-            inputs: MOCK_CONTAINER_INPUTS
+            containerId: HASHED_MOCK_CONTAINER_ID
         });
     }
 
@@ -166,7 +165,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
-        assertEq(sub.inputs, actual.inputs);
 
         // Assert state is correctly updated
         if (nonce > maxSubscriberNonce) {
@@ -259,7 +257,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
-        assertEq(sub.inputs, actual.inputs);
 
         // Assert state is correctly updated
         assertEq(COORDINATOR.maxSubscriberNonce(address(CALLBACK)), 0);
@@ -617,7 +614,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Manually verifying the callstack is useful here to ensure that the overhead gas is being properly set
         // Measure direct delivery for creation + delivery
-        uint256 inputOverhead = 35_000 wei;
+        uint256 inputOverhead = 15_000 wei;
         uint256 gasExpected = CALLBACK_COST + COORDINATOR.DELEGATEE_OVERHEAD_CREATE_WEI()
             + COORDINATOR.DELIVERY_OVERHEAD_WEI() + inputOverhead;
         uint256 startingGas = gasleft();

@@ -111,9 +111,8 @@ contract BalanceScaleTest is Test {
 
         // Get new subscription
         uint32 subscriptionId = 1;
-        LibStruct.Subscription memory sub = LibStruct.getSubscription(COORDINATOR, subscriptionId);
-
-        (int256[4] memory features) = abi.decode(sub.inputs, (int256[4]));
+        bytes memory containerInputs = BALANCE_SCALE.getContainerInputs(subscriptionId, 0, 0, address(0));
+        (int256[4] memory features) = abi.decode(containerInputs, (int256[4]));
         for (uint8 i = 0; i < 4; i++) {
             // Assert features are correctly stored
             assertEq(inputs[i], features[i]);
