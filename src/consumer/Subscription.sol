@@ -26,6 +26,7 @@ abstract contract SubscriptionConsumer is BaseConsumer {
     /// @param frequency max number of times to process subscription (i.e, `frequency == 1` is a one-time request)
     /// @param period period, in seconds, at which to progress each responding `interval`
     /// @param redundancy number of unique responding Infernet nodes
+    /// @param lazy whether to lazily store subscription responses in `AsyncInbox`
     /// @return subscription ID of newly-created subscription
     function _createComputeSubscription(
         string memory containerId,
@@ -33,9 +34,11 @@ abstract contract SubscriptionConsumer is BaseConsumer {
         uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
-        uint16 redundancy
+        uint16 redundancy,
+        bool lazy
     ) internal returns (uint32) {
-        return COORDINATOR.createSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy);
+        return
+            COORDINATOR.createSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy, lazy);
     }
 
     /// @notice Cancels a created subscription
