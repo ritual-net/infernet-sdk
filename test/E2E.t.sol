@@ -86,7 +86,7 @@ contract BalanceScaleTest is Test {
         ALICE.activateNode();
 
         // Setup balance scale contract
-        BALANCE_SCALE = new BalanceScale(address(COORDINATOR), address(ATTESTOR), VERIFIER);
+        BALANCE_SCALE = new BalanceScale(address(registry), address(ATTESTOR), VERIFIER);
 
         // Ensure balance scale contract address matches up
         assertEq(address(BALANCE_SCALE), balanceScaleAddress);

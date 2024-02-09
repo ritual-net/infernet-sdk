@@ -92,7 +92,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         BACKUP_DELEGATEE_ADDRESS = vm.addr(BACKUP_DELEGATEE_PRIVATE_KEY);
 
         // Initialize mock callback consumer w/ assigned delegate
-        CALLBACK = new MockDelegatorCallbackConsumer(address(COORDINATOR), DELEGATEE_ADDRESS);
+        CALLBACK = new MockDelegatorCallbackConsumer(address(registry), DELEGATEE_ADDRESS);
     }
 
     /*//////////////////////////////////////////////////////////////

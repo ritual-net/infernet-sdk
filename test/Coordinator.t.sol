@@ -118,10 +118,10 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         }
 
         // Initialize mock callback consumer
-        CALLBACK = new MockCallbackConsumer(address(COORDINATOR));
+        CALLBACK = new MockCallbackConsumer(address(registry));
 
         // Initialize mock subscription consumer
-        SUBSCRIPTION = new MockSubscriptionConsumer(address(COORDINATOR));
+        SUBSCRIPTION = new MockSubscriptionConsumer(address(registry));
     }
 }
 
