@@ -34,12 +34,19 @@ abstract contract AsyncInboxReader {
     /// @param containerId item compute container ID
     /// @param node item delivering node address
     /// @param index associated item index
-    /// @return AsyncInbox `InboxItem`
+    /// @return AsyncInbox `InboxItem` de-structured
     function _readAsyncInbox(bytes32 containerId, address node, uint256 index)
         internal
         view
-        returns (AsyncInbox.InboxItem memory)
+        returns (
+            uint32,
+            uint32,
+            uint32,
+            bytes memory,
+            bytes memory,
+            bytes memory
+        )
     {
-        return ASYNC_INBOX.retrieve(containerId, node, index);
+        return ASYNC_INBOX.inbox(containerId, node, index);
     }
 }

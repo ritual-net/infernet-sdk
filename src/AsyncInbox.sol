@@ -188,14 +188,4 @@ contract AsyncInbox {
     ) external onlyCoordinator returns (uint256) {
         return _store(containerId, node, subscriptionId, interval, input, output, proof);
     }
-
-    /// @notice Exposes an explicit read interface to `inbox` enforcing `InboxItem` return type
-    /// @dev Enables downstream consumers to read `InboxItem` structs rather than deconstructed struct items
-    /// @param containerId compute container ID
-    /// @param node delivering node address
-    /// @param index index of inbox item
-    /// @return associated inbox item at inbox[containerId][node][index]
-    function retrieve(bytes32 containerId, address node, uint256 index) external view returns (InboxItem memory) {
-        return inbox[containerId][node][index];
-    }
 }

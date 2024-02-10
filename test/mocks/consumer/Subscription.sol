@@ -39,7 +39,8 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
-        uint16 redundancy
+        uint16 redundancy,
+        bool lazy
     ) external returns (uint32) {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
@@ -48,7 +49,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
 
         // Create new subscription
         uint32 actualSubscriptionID =
-            _createComputeSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy);
+            _createComputeSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy, lazy);
 
         // Assert ID expectations
         assertEq(exepectedSubscriptionID, actualSubscriptionID);
@@ -65,6 +66,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         assertEq(sub.frequency, frequency);
         assertEq(sub.period, period);
         assertEq(sub.containerId, keccak256(abi.encode(containerId)));
+        assertEq(sub.lazy, lazy);
 
         // Explicitly return subscription ID
         return actualSubscriptionID;
@@ -79,7 +81,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
 
         // Get subscription owner & assert zeroed-out
         address expected = address(0);
-        (address actual,,,,,,,) = COORDINATOR.subscriptions(subscriptionId);
+        (address actual,,,,,,,,) = COORDINATOR.subscriptions(subscriptionId);
         assertEq(actual, expected);
     }
 
@@ -106,17 +108,43 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) internal override {
+        // Create new {input, output, proof} compute container responses to populate
+        // Based on whether response is eagerly or lazily delivered. By default, set
+        // to populating to eager response.
+        bytes memory input_ = input;
+        bytes memory output_ = output;
+        bytes memory proof_ = proof;
+
+        // Check if subscription is lazily delivered
+        if (containerId != bytes32("")) {
+            // Collect compute container response from AsyncInbox
+            (, uint32 inboxSubscriptionId, uint32 inboxInterval, bytes memory inboxInput, bytes memory inboxOutput, bytes memory inboxProof) = _readAsyncInbox(containerId, node, index);
+
+            // Assert subscription ID, interval match delivered response
+            assertEq(subscriptionId, inboxSubscriptionId);
+            assertEq(interval, inboxInterval);
+
+            // Assign compute container responses
+            input_ = inboxInput;
+            output_ = inboxOutput;
+            proof_ = inboxProof;
+        }
+
         // Log delivered output
         outputs[subscriptionId][interval][redundancy] = DeliveredOutput({
             subscriptionId: subscriptionId,
             interval: interval,
             redundancy: redundancy,
             node: node,
-            input: input,
-            output: output,
-            proof: proof
+            input: input_,
+            output: output_,
+            proof: proof_,
+            containerId: containerId,
+            index: index
         });
     }
 }
