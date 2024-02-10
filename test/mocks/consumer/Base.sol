@@ -17,7 +17,7 @@ abstract contract MockBaseConsumer {
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data), empty for lazy subscriptions
     /// @param proof optional off-chain container execution proof (or arbitrary metadata), empty for lazy subscriptions
     /// @param containerId if lazy subscription, subscription compute container ID, else empty
-    /// @param index if lazy subscription, `AsyncInbox` lazy storage index, else empty
+    /// @param index if lazy subscription, `Inbox` lazy store index, else empty
     struct DeliveredOutput {
         uint32 subscriptionId;
         uint32 interval;

@@ -92,9 +92,8 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
             index: index
         });
 
-        // Assert containerId and index are nullified
-        // Because callback responses are always eagerly-delivered
-        assertEq(containerId, "");
+        // Assert containerId and index are nullified because callback responses are always eagerly delivered
+        assertEq(containerId, bytes32(0));
         assertEq(index, 0);
     }
 }

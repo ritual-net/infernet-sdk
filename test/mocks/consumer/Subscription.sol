@@ -28,6 +28,23 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
                            UTILITY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Mock read interface to `Inbox` `InboxItem`(s)
+    /// @param containerId compute container ID
+    /// @param node delivering node address
+    /// @param index item index
+    /// @return `InboxItem` immutable creation timestamp
+    /// @return Associated subscription ID (`0` if none)
+    /// @return Associated subscription interval (`0` if none)
+    /// @return Optional compute container input parameters
+    /// @return Optional compute container output parameters
+    /// @return Optional compute container proof parameters
+    function readMockInbox(bytes32 containerId, address node, uint256 index)
+        external
+        returns (uint32, uint32, uint32, bytes memory, bytes memory, bytes memory)
+    {
+        return _readInbox(containerId, node, index);
+    }
+
     /// @notice Create new mock subscription
     /// @dev Parameter interface conforms to same as `SubscriptionConsumer._createContainerSubscription`
     /// @dev Augmented with checks
@@ -112,37 +129,15 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         bytes32 containerId,
         uint256 index
     ) internal override {
-        // Create new {input, output, proof} compute container responses to populate
-        // Based on whether response is eagerly or lazily delivered. By default, set
-        // to populating to eager response.
-        bytes memory input_ = input;
-        bytes memory output_ = output;
-        bytes memory proof_ = proof;
-
-        // Check if subscription is lazily delivered
-        if (containerId != bytes32("")) {
-            // Collect compute container response from AsyncInbox
-            (, uint32 inboxSubscriptionId, uint32 inboxInterval, bytes memory inboxInput, bytes memory inboxOutput, bytes memory inboxProof) = _readAsyncInbox(containerId, node, index);
-
-            // Assert subscription ID, interval match delivered response
-            assertEq(subscriptionId, inboxSubscriptionId);
-            assertEq(interval, inboxInterval);
-
-            // Assign compute container responses
-            input_ = inboxInput;
-            output_ = inboxOutput;
-            proof_ = inboxProof;
-        }
-
         // Log delivered output
         outputs[subscriptionId][interval][redundancy] = DeliveredOutput({
             subscriptionId: subscriptionId,
             interval: interval,
             redundancy: redundancy,
             node: node,
-            input: input_,
-            output: output_,
-            proof: proof_,
+            input: input,
+            output: output,
+            proof: proof,
             containerId: containerId,
             index: index
         });

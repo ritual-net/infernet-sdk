@@ -304,7 +304,7 @@ contract Coordinator {
             // Else, delivering subscription eagerly
             // We must ensure `containerId`, `index` are nullified since eagerly delivering container outputs
             BaseConsumer(subscription.owner).rawReceiveCompute(
-                subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof, "", 0
+                subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof, bytes32(0), 0
             );
         }
 
