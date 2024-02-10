@@ -16,8 +16,8 @@ contract Registry {
     /// @notice Coordinator address
     address public immutable COORDINATOR;
 
-    /// @notice AsyncInbox address
-    address public immutable ASYNC_INBOX;
+    /// @notice Inbox address
+    address public immutable INBOX;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -27,10 +27,10 @@ contract Registry {
     /// @dev Requires pre-computing expected deployed addresses
     /// @param nodeManager NodeManager address
     /// @param coordinator Coordinator address
-    /// @param asyncInbox AsyncInbox address
-    constructor(address nodeManager, address coordinator, address asyncInbox) {
+    /// @param inbox Inbox address
+    constructor(address nodeManager, address coordinator, address inbox) {
         NODE_MANAGER = nodeManager;
         COORDINATOR = coordinator;
-        ASYNC_INBOX = asyncInbox;
+        INBOX = inbox;
     }
 }

@@ -3,15 +3,15 @@ pragma solidity ^0.8.4;
 
 import {Registry} from "../Registry.sol";
 import {Coordinator} from "../Coordinator.sol";
-import {AsyncInboxReader} from "./AsyncInboxReader.sol";
+import {InboxReader} from "../pattern/InboxReader.sol";
 
 /// @title BaseConsumer
 /// @notice Handles receiving container compute responses from Infernet coordinator
 /// @notice Handles exposing container inputs to Infernet nodes via `getContainerInputs()`
-/// @dev Inherits `AsyncInboxReader` to inherit functions to read `AsyncInbox` for lazy subscriptions
+/// @dev Inherits `InboxReader` to inherit functions to read `Inbox` for lazy subscriptions
 /// @dev Contains a single public entrypoint `rawReceiveCompute` callable by only the Infernet coordinator. Once
 ///      call origin is verified, parameters are proxied to internal function `_receiveCompute`
-abstract contract BaseConsumer is AsyncInboxReader {
+abstract contract BaseConsumer is InboxReader {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -34,7 +34,7 @@ abstract contract BaseConsumer is AsyncInboxReader {
 
     /// @notice Initialize new BaseConsumer
     /// @param registry registry address
-    constructor(address registry) AsyncInboxReader(registry) {
+    constructor(address registry) InboxReader(registry) {
         // Setup Coordinator (via address from canonical registry)
         COORDINATOR = Coordinator(Registry(registry).COORDINATOR());
     }
@@ -54,7 +54,7 @@ abstract contract BaseConsumer is AsyncInboxReader {
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data), empty for lazy subscriptions
     /// @param proof optional off-chain container execution proof (or arbitrary metadata), empty for lazy subscriptions
     /// @param containerId if lazy subscription, subscription compute container ID, else empty
-    /// @param index if lazy subscription, `AsyncInbox` lazy storage index, else empty
+    /// @param index if lazy subscription, `Inbox` lazy store index, else empty
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -94,7 +94,7 @@ abstract contract BaseConsumer is AsyncInboxReader {
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data), empty for lazy subscriptions
     /// @param proof optional off-chain container execution proof (or arbitrary metadata), empty for lazy subscriptions
     /// @param containerId if lazy subscription, subscription compute container ID, else empty
-    /// @param index if lazy subscription, `AsyncInbox` lazy storage index, else empty
+    /// @param index if lazy subscription, `Inbox` lazy store index, else empty
     function rawReceiveCompute(
         uint32 subscriptionId,
         uint32 interval,

@@ -4,11 +4,11 @@ pragma solidity ^0.8.4;
 import {Registry} from "./Registry.sol";
 import {NodeManager} from "./NodeManager.sol";
 
-/// @title AsyncInbox
-/// @notice Container response storage (inbox)
-/// @dev Allows `Coordinator` to store container compute responses to be consumed lazily
-/// @dev Allows nodes with `NodeManager.NodeStatus.Active` to deliver compute responses optimistically, without associated `Subscription`(s)
-contract AsyncInbox {
+/// @title Inbox
+/// @notice Optionally stores container compute responses
+/// @dev Allows `Coordinator` to store compute responses for lazy consumption
+/// @dev Allows nodes with `NodeManager.NodeStatus.Active` to store compute responses without associated `Subscription`(s)
+contract Inbox {
     /*//////////////////////////////////////////////////////////////
                                 STRUCTS
     //////////////////////////////////////////////////////////////*/
@@ -45,13 +45,13 @@ contract AsyncInbox {
 
     /// @notice containerId => delivering node address => array of delivered compute responses
     /// @dev Notice that validation of an `InboxItem` corresponding to a `containerId` is left to a downstream consumer
-    mapping(bytes32 => mapping(address => InboxItem[])) public inbox;
+    mapping(bytes32 => mapping(address => InboxItem[])) public store;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Emitted when a new InboxItem is added to the `inbox`
+    /// @notice Emitted when a new InboxItem is added
     /// @param containerId compute container ID
     /// @param node delivering node address
     /// @param index index of newly-added inbox item
@@ -61,11 +61,11 @@ contract AsyncInbox {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `store()` if delivering tx from inactive node (status != `NodeManager.NodeStatus.Active`)
+    /// @notice Thrown by `write()` if delivering tx from inactive node (status != `NodeManager.NodeStatus.Active`)
     /// @dev 4-byte signature: `0x8741cbb8`
     error NodeNotActive();
 
-    /// @notice Thrown by `storeAuthenticated()` if called from non-Coordinator address
+    /// @notice Thrown by `writeAuthenticated()` if called from non-Coordinator address
     /// @dev 4-byte signature: `0x9ec853e6`
     error NotCoordinator();
 
@@ -82,7 +82,7 @@ contract AsyncInbox {
     }
 
     /// @notice Allows calls from only the coordinator
-    /// @dev Allows adding authentication to functions that explicitly store `Subscription` responses
+    /// @dev Allows authenticating functions that store `Subscription` responses
     modifier onlyCoordinator() {
         if (msg.sender != COORDINATOR_ADDRESS) {
             revert NotCoordinator();
@@ -94,7 +94,7 @@ contract AsyncInbox {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Initializes new AsyncInbox
+    /// @notice Initializes new Inbox
     /// @param registry registry contract
     constructor(Registry registry) {
         // Collect node manager contract from registry
@@ -107,7 +107,7 @@ contract AsyncInbox {
                            INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Allows pushing `InboxItem`(s) to `inbox`
+    /// @notice Allows pushing `InboxItem`(s) to `store`
     /// @param containerId compute container ID
     /// @param node delivering node address
     /// @param subscriptionId optional associated subscription ID (`0` if none)
@@ -116,7 +116,7 @@ contract AsyncInbox {
     /// @param output optional compute container output
     /// @param proof optional compute container proof
     /// @return index of newly-added inbox item
-    function _store(
+    function _write(
         bytes32 containerId,
         address node,
         uint32 subscriptionId,
@@ -125,8 +125,8 @@ contract AsyncInbox {
         bytes calldata output,
         bytes calldata proof
     ) internal returns (uint256) {
-        // Push new inbox item to inbox
-        inbox[containerId][node].push(
+        // Push new inbox item to store
+        store[containerId][node].push(
             InboxItem({
                 timestamp: uint32(block.timestamp),
                 subscriptionId: subscriptionId,
@@ -138,7 +138,7 @@ contract AsyncInbox {
         );
 
         // Collect index of newly-added inbox item
-        uint256 index = inbox[containerId][node].length - 1;
+        uint256 index = store[containerId][node].length - 1;
 
         // Emit newly-added inbox item
         emit NewInboxItem(containerId, node, index);
@@ -158,17 +158,17 @@ contract AsyncInbox {
     /// @param output optional compute container output
     /// @param proof optional compute container proof
     /// @return index of newly-added inbox item
-    function store(bytes32 containerId, bytes calldata input, bytes calldata output, bytes calldata proof)
+    function write(bytes32 containerId, bytes calldata input, bytes calldata output, bytes calldata proof)
         external
         onlyActiveNode
         returns (uint256)
     {
-        return _store(containerId, msg.sender, 0, 0, input, output, proof);
+        return _write(containerId, msg.sender, 0, 0, input, output, proof);
     }
 
     /// @notice Allows `Coordinator` to store container compute response during `deliverCompute()` execution
-    /// @dev Re-entering does not work because `msg.sender` must be `address(COORDINATOR)` and `COORDINATOR` does not implement `BaseConsumer`
-    /// @dev `node` address is explicitly passed because `tx.origin` may not be accurate and `msg.sender` must be `address(COORDINATOR)`
+    /// @dev `node` address is explicitly passed because `tx.origin` may not be accurate
+    /// @dev `msg.sender` must be `address(COORDINATOR)` for authenticated write (storing subscriptionId, interval)
     /// @param containerId compute container ID
     /// @param node delivering node address
     /// @param subscriptionId optional associated subscription ID (`0` if none)
@@ -177,7 +177,7 @@ contract AsyncInbox {
     /// @param output optional compute container output
     /// @param proof optional compute container proof
     /// @return index of newly-added inbox item
-    function storeAuthenticated(
+    function writeViaCoordinator(
         bytes32 containerId,
         address node,
         uint32 subscriptionId,
@@ -186,6 +186,6 @@ contract AsyncInbox {
         bytes calldata output,
         bytes calldata proof
     ) external onlyCoordinator returns (uint256) {
-        return _store(containerId, node, subscriptionId, interval, input, output, proof);
+        return _write(containerId, node, subscriptionId, interval, input, output, proof);
     }
 }
