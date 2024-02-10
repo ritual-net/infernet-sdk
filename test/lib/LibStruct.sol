@@ -34,6 +34,8 @@ library LibStruct {
         bytes input;
         bytes output;
         bytes proof;
+        bytes32 containerId;
+        uint256 index;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -86,10 +88,12 @@ library LibStruct {
             address node,
             bytes memory input,
             bytes memory output,
-            bytes memory proof
+            bytes memory proof,
+            bytes32 containerId,
+            uint256 index
         ) = consumer.outputs(subId, interval, redundancy);
 
         // Return created struct
-        return LibStruct.DeliveredOutput(id, subInterval, subRedundancy, node, input, output, proof);
+        return LibStruct.DeliveredOutput(id, subInterval, subRedundancy, node, input, output, proof, containerId, index);
     }
 }
