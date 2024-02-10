@@ -203,86 +203,33 @@ contract Coordinator {
         bytes calldata proof,
         uint256 callingOverheadWei
     ) internal {
-        // Naively, one would think that loading a subscription into memory via
-        // `Subscription memory subscription = subscriptions[subscriptionId]`
-        // would be cost-effective and most readable.
+        // In infernet-sdk v0.1.0, loading a subscription into memory was handled
+        // piece-wise in assembly because a Subscription struct contained dynamic
+        // types (forcing an explict, unbounded SLOAD cost to copy dynamic length /
+        // word size bytes).
 
-        // Unfortunately, this is not the case. This function makes no use of
-        // `subscription.containerId` or `subscription.inputs`. Because these
-        // are dynamic types, we are forced to pay to load into memory the length
-        // + content of these parameters. In some cases (say, container input being
-        // 100 uint256's), we are forced to pay 2 SLOAD (length slot containerId, inputs)
-        // + N SLOAD (containerId + inputs byte length / word size) (for example, 100
-        // SLOAD's in the case of 100 uint256's) + N MSTORE (copying into memory)
-        // + memory expansion costs.
+        // In infernet-sdk v0.2.0, we removed dynamic types in Subscription structs
+        // allowing us to directly copy a subscription into memory. Notice: this is
+        // still not the most optimized approach, given we pay up-front to SLOAD 2
+        // slots, rather than loading 1 slot at a time (subsidizing costs in case
+        // of failure conditions). Still, the additional gas overhead (~500 gas in most
+        // failure cases) is better than poor developer UX and worse readability.
 
-        // To avoid this, we can first access memory parameters selectively, copying
-        // just the fixed size params (uint16, etc.) into memory by accessing state via
-        // `subscriptions[subscriptionId].activeAt` syntax.
-
-        // But, with this syntax, while we avoid the significant overhead of copying
-        // from storage, into memory, the unnecessary dynamic parameters, we are now
-        // forced to pay 100 gas for each non-first storage slot read (hot SLOAD).
-
-        // For example, even if accessing two tightly-packed variables in slot 0, we must
-        // pay COLD SLOAD + HOT SLOAD, rather than just COLD SLOAD + MLOAD.
-
-        // To avoid this, we can drop down to assembly and:
-        //      1. Manually SLOAD tightly-packed struct slots
-        //      2. Unpack and MSTORE variables to avoid the hot SLOAD penalty since we
-        //         only copy from storage into memory once (rather than for each variable)
-
-        // Setup parameters in first slot
-        // Note, we could load these variables right before they are used but the MSTORE is cheap and this is cleaner
-        address subOwner;
-        uint32 subActiveAt;
-        uint32 subPeriod;
-        uint32 subFrequency;
-
-        // Store slot identifier for subscriptions[subscriptionId][slot 0]
-        bytes32 storageSlot;
-        assembly ("memory-safe") {
-            // Load address of free-memory pointer
-            let m := mload(0x40)
-
-            // Store subscription ID to first free slot
-            // uint32 automatically consumes full word
-            mstore(m, subscriptionId)
-            // Store subscriptions mapping storage slot (3) to 32 byte (1 word) offset
-            mstore(add(m, 0x20), 3)
-
-            // At this point, memory layout [0 -> 0x20 == subscriptionId, 0x20 -> 0x40 == 3]
-            // Calculate mapping storage slot — hash(key, mapping slot)
-            // Hash data from 0 -> 0x40 (2 words)
-            storageSlot := keccak256(m, 0x40)
-
-            // SLOAD struct data
-            let data := sload(storageSlot)
-
-            // Solidity packs structs right to left (least-significant bits a la little-endian)
-            // MSTORE'ing tightly-packed variables from storage slot data
-            // Erase first 96 bits via AND, grab last 160
-            subOwner := and(data, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
-            // Grab first 32 bits preceeding owner
-            subActiveAt := and(shr(160, data), 0xFFFFFFFF)
-            // Grab first 32 bits preceeding activeAt
-            subPeriod := and(shr(192, data), 0xFFFFFFFF)
-            // Grab first 32 bits from left
-            subFrequency := shr(224, data)
-        }
+        // Collect subscription
+        Subscription memory subscription = subscriptions[subscriptionId];
 
         // Revert if subscription does not exist
-        if (subOwner == address(0)) {
+        if (subscription.owner == address(0)) {
             revert SubscriptionNotFound();
         }
 
         // Revert if subscription is not yet active
-        if (block.timestamp < subActiveAt) {
+        if (block.timestamp < subscription.activeAt) {
             revert SubscriptionNotActive();
         }
 
         // Calculate subscription interval
-        uint32 interval = getSubscriptionInterval(subActiveAt, subPeriod);
+        uint32 interval = getSubscriptionInterval(subscription.activeAt, subscription.period);
 
         // Revert if not processing curent interval
         if (interval != deliveryInterval) {
@@ -290,38 +237,19 @@ contract Coordinator {
         }
 
         // Revert if interval > frequency
-        if (interval > subFrequency) {
+        if (interval > subscription.frequency) {
             revert SubscriptionCompleted();
         }
 
-        // Setup parameters in second slot
-        uint16 subRedundancy;
-        uint48 subMaxGasPrice;
-        uint32 subMaxGasLimit;
-
-        assembly ("memory-safe") {
-            // SLOAD struct data
-            // Second slot is simply offset from first by 1
-            let data := sload(add(storageSlot, 1))
-
-            // MSTORE'ing tightly-packed variables from storage slot data
-            // Grab last 16 bits
-            subRedundancy := and(data, 0xFFFF)
-            // Grab first 48 bits preceeding redundancy
-            subMaxGasPrice := and(shr(16, data), 0xFFFFFFFFFFFF)
-            // Grab first 32 bits from left
-            subMaxGasLimit := and(shr(64, data), 0xFFFFFFFF)
-        }
-
         // Revert if tx gas price > max subscription allowed
-        if (tx.gasprice > subMaxGasPrice) {
+        if (tx.gasprice > subscription.maxGasPrice) {
             revert GasPriceExceeded();
         }
 
         // Revert if redundancy requirements for this interval have been met
         bytes32 key = keccak256(abi.encode(subscriptionId, interval));
         uint16 numRedundantDeliveries = redundancyCount[key];
-        if (numRedundantDeliveries == subRedundancy) {
+        if (numRedundantDeliveries == subscription.redundancy) {
             revert IntervalCompleted();
         }
         // Highly unlikely to overflow given incrementing by 1/node
@@ -338,7 +266,7 @@ contract Coordinator {
 
         // Deliver container compute output to contract (measuring execution cost)
         uint256 startingGas = gasleft();
-        BaseConsumer(subOwner).rawReceiveCompute(
+        BaseConsumer(subscription.owner).rawReceiveCompute(
             subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof
         );
         uint256 endingGas = gasleft();
@@ -352,7 +280,7 @@ contract Coordinator {
         unchecked {
             executionCost = startingGas - endingGas + callingOverheadWei + DELIVERY_OVERHEAD_WEI;
         }
-        if (executionCost > subMaxGasLimit) {
+        if (executionCost > subscription.maxGasLimit) {
             revert GasLimitExceeded();
         }
 
