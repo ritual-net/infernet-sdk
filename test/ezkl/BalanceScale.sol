@@ -117,7 +117,7 @@ contract BalanceScale is SubscriptionConsumer {
         bytes memory proof_ = proof;
         if (containerId != bytes32(0)) {
             // Collect input, proof
-            (,,,bytes memory lazyInput,,bytes memory lazyProof) = _readInbox(containerId, node, index);
+            (,,, bytes memory lazyInput,, bytes memory lazyProof) = _readInbox(containerId, node, index);
             input_ = lazyInput;
             proof_ = lazyProof;
         }
