@@ -2,12 +2,12 @@
 pragma solidity ^0.8.4;
 
 import {DataAttestation} from "./DataAttestor.sol";
-import {CallbackConsumer} from "../../src/consumer/Callback.sol";
+import {SubscriptionConsumer} from "../../src/consumer/Subscription.sol";
 
 /// @title BalanceScale
 /// @notice E2E developer demo of a balance scale prediction contract
 /// @dev Uses simple model trained on UCI balance scale data: https://archive.ics.uci.edu/dataset/12/balance+scale
-contract BalanceScale is CallbackConsumer {
+contract BalanceScale is SubscriptionConsumer {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -54,7 +54,7 @@ contract BalanceScale is CallbackConsumer {
     /// @param registry registry address
     /// @param attestor EZKL attestor address
     /// @param verifier EZKL verifier address
-    constructor(address registry, address attestor, address verifier) CallbackConsumer(registry) {
+    constructor(address registry, address attestor, address verifier) SubscriptionConsumer(registry) {
         // Initiate attestor contract
         ATTESTOR = DataAttestation(attestor);
         // Set verifier address
@@ -65,20 +65,42 @@ contract BalanceScale is CallbackConsumer {
                                FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Inherited function: SubscriptionConsumer.getContainerInputs
+    function getContainerInputs(uint32 subscriptionId, uint32 interval, uint32 timestamp, address caller)
+        external
+        view
+        override
+        returns (bytes memory)
+    {
+        // Simply return encoded stored input data
+        return abi.encode(data[subscriptionId]);
+    }
+
     /// @notice Initiates new prediction by encoding input parameters and kicking off compute request callback
     /// @param input balance scale params: [right-distance, right-weight, left-distance, left-weight]
-    function initiatePrediction(int256[4] calldata input) external {
+    /// @param lazy whether to receive response lazily
+    function initiatePrediction(int256[4] calldata input, bool lazy) external {
         // Encode features
         bytes memory features = abi.encode(input);
 
-        // Make new callback request
-        uint32 id = _requestCompute("BSM", features, 1000 gwei, 1_000_000 wei, 1);
+        // Make new subscription creation
+        uint32 id = _createComputeSubscription("BSM", 1000 gwei, 1_000_000 wei, 1, 0 minutes, 1, lazy);
 
         // Store input data
         data[id] = input;
     }
 
-    /// @notice Inherited function: CallbackConsumer._receiveCompute
+    /// @notice Internal helper to collect instances from proof
+    /// @param proof EZKL proof
+    function _getInstances(bytes calldata proof) external pure returns (uint256[] memory) {
+        // Proof begins with 4-byte signature to Verifier (because Verifier is staticall'd from Attestor)
+        // Thus, we first strip the first 4-bytes of proof to collect just function data
+        // Then, we decode the instances array from the stripped proof
+        (, uint256[] memory instances) = abi.decode(proof[4:proof.length], (bytes, uint256[]));
+        return instances;
+    }
+
+    /// @notice Inherited function: SubscriptionConsumer._receiveCompute
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -86,32 +108,41 @@ contract BalanceScale is CallbackConsumer {
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) internal override {
         // On callback, first, set currentData = relevant data to verify for subscription
         currentData = data[subscriptionId];
 
+        // If response is lazily computed, collect {input, proof} from inbox
+        bytes memory input_ = input;
+        bytes memory proof_ = proof;
+        if (containerId != bytes32(0)) {
+            // Collect input, proof
+            (,,,bytes memory lazyInput,,bytes memory lazyProof) = _readInbox(containerId, node, index);
+            input_ = lazyInput;
+            proof_ = lazyProof;
+        }
+
         // Verify off-chain recorded input is correct
         bytes32 hashedInput = keccak256(abi.encode(currentData));
-        (bytes32 recordedInput) = abi.decode(input, (bytes32));
+        (bytes32 recordedInput) = abi.decode(input_, (bytes32));
         if (hashedInput != recordedInput) {
             revert InputsIncorrect();
         }
 
         // Attest + verify proof via attestor
-        bool verified = ATTESTOR.verifyWithDataAttestation(VERIFIER, proof);
+        bool verified = ATTESTOR.verifyWithDataAttestation(VERIFIER, proof_);
 
         // Error if proof not verified
         if (!verified) {
             revert ProofIncorrect();
         }
 
-        // Proof begins with 4-byte signature to Verifier (because Verifier is staticall'd from Attestor)
-        // Thus, we first strip the first 4-bytes of proof to collect just function data
-        // Then, we decode the instances array from the stripped proof
-        (, uint256[] memory instances) = abi.decode(proof[4:proof.length], (bytes, uint256[]));
-
         // Set prediction to predicted result from instances array
+        // Coeercing bytes memory to bytes calldata
+        uint256[] memory instances = this._getInstances(proof_);
         predictions[subscriptionId] = int256(instances[instances.length - 1]);
     }
 }

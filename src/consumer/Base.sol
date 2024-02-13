@@ -68,7 +68,7 @@ abstract contract BaseConsumer is InboxReader {
     ) internal virtual {}
 
     /// @notice View function to broadcast dynamic container inputs to off-chain Infernet nodes
-    /// @dev Develpers can modify this function to return dynamic inputs
+    /// @dev Developers can modify this function to return dynamic inputs
     /// @param subscriptionId subscription ID to collect container inputs for
     /// @param interval subscription interval to collect container inputs for
     /// @param timestamp timestamp at which container inputs are collected
