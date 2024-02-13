@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Inbox} from "../src/Inbox.sol";
 import {Test} from "forge-std/Test.sol";
 import {LibSign} from "./lib/LibSign.sol";
 import {Registry} from "../src/Registry.sol";
@@ -12,6 +13,7 @@ import {NodeManager} from "../src/NodeManager.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {ICoordinatorEvents, CoordinatorConstants} from "./Coordinator.t.sol";
 import {MockDelegatorCallbackConsumer} from "./mocks/consumer/DelegatorCallback.sol";
+import {MockDelegatorSubscriptionConsumer} from "./mocks/consumer/DelegatorSubscription.sol";
 
 /// @title EIP712CoordinatorTest
 /// @notice Tests EIP712Coordinator implementation
@@ -23,7 +25,11 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Cold cost of `CallbackConsumer.rawReceiveCompute`
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
     /// @dev Overriden from CoordinatorConstants since state change order forces this to cost ~100 wei more
-    uint32 constant CALLBACK_COST = COLD_DELIVERY_COST + 100 wei;
+    uint32 constant CALLBACK_COST = COLD_EAGER_DELIVERY_COST + 100 wei;
+
+    /// @notice Cold cost of lazy-`SubscriptionConsumer.rawReceiveCompute`
+    /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
+    uint32 constant SUBSCRIPTION_COST = COLD_LAZY_DELIVERY_COST + 100 wei;
 
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
@@ -31,6 +37,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
     /// @notice EIP712Coordinator
     EIP712Coordinator internal COORDINATOR;
+
+    /// @notice Inbox
+    Inbox internal INBOX;
 
     /// @notice Mock node (Alice)
     MockNode internal ALICE;
@@ -40,6 +49,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
     /// @notice Mock callback consumer (w/ assigned delegatee)
     MockDelegatorCallbackConsumer internal CALLBACK;
+
+    /// @notice Mock subscription consumer (w/ assigned delegatee)
+    MockDelegatorSubscriptionConsumer internal SUBSCRIPTION;
 
     /// @notice Delegatee address
     address internal DELEGATEE_ADDRESS;
@@ -60,11 +72,12 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator) =
+        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox) =
             LibDeploy.deployContracts(initialNonce);
 
         // Assign to internal
         COORDINATOR = coordinator;
+        INBOX = inbox;
 
         // Initalize mock nodes
         ALICE = new MockNode(registry);
@@ -110,7 +123,8 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
                 + uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()),
             frequency: 1,
             period: 0,
-            containerId: HASHED_MOCK_CONTAINER_ID
+            containerId: HASHED_MOCK_CONTAINER_ID,
+            lazy: false
         });
     }
 
@@ -466,6 +480,62 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(out.input, MOCK_INPUT);
         assertEq(out.output, MOCK_OUTPUT);
         assertEq(out.proof, MOCK_PROOF);
+
+        // Ensure subscription completion is tracked
+        bytes32 key = keccak256(abi.encode(subscriptionId, deliveryInterval, address(ALICE)));
+        assertEq(COORDINATOR.nodeResponded(key), true);
+    }
+
+    /// @notice Can delegated deliver compute reponse, while creating new lazy subscription
+    function testCanAtomicCreateLazySubscriptionAndDeliverOutput() public {
+        // Starting nonce
+        uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
+
+        // Create new dummy subscription
+        Coordinator.Subscription memory sub = getMockSubscription();
+
+        // Modify dummy subscription to be lazy
+        sub.owner = address(SUBSCRIPTION);
+        sub.maxGasLimit = SUBSCRIPTION_COST + uint32(COORDINATOR.DELEGATEE_OVERHEAD_CREATE_WEI())
+            + uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI());
+        sub.lazy = true;
+
+        // Generate signature expiry
+        uint32 expiry = uint32(block.timestamp) + 30 minutes;
+
+        // Get EIP-712 typed message
+        bytes32 message = getMessage(nonce, expiry, sub);
+
+        // Sign message from delegatee private key
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
+
+        // Create subscription and deliver response, via deliverComputeDelegatee
+        uint32 subscriptionId = 1;
+        uint32 deliveryInterval = 1;
+        ALICE.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+        );
+
+        // Get response
+        LibStruct.DeliveredOutput memory out =
+            LibStruct.getDeliveredOutput(SUBSCRIPTION, subscriptionId, deliveryInterval, 1);
+        assertEq(out.subscriptionId, subscriptionId);
+        assertEq(out.interval, deliveryInterval);
+        assertEq(out.redundancy, 1);
+        assertEq(out.input, "");
+        assertEq(out.output, "");
+        assertEq(out.proof, "");
+        assertEq(out.containerId, HASHED_MOCK_CONTAINER_ID);
+        assertEq(out.index, 0);
+
+        // Ensure response is stored in inbox
+        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        assertEq(item.timestamp, block.timestamp);
+        assertEq(item.subscriptionId, subscriptionId);
+        assertEq(item.interval, deliveryInterval);
+        assertEq(item.input, MOCK_INPUT);
+        assertEq(item.output, MOCK_OUTPUT);
+        assertEq(item.proof, MOCK_PROOF);
 
         // Ensure subscription completion is tracked
         bytes32 key = keccak256(abi.encode(subscriptionId, deliveryInterval, address(ALICE)));
