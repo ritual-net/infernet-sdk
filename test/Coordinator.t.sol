@@ -50,11 +50,12 @@ abstract contract CoordinatorConstants {
 
     /// @notice Cold cost of eager {CallbackConsumer, SubscriptionConsumer}.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 constant COLD_EAGER_DELIVERY_COST = 115_160 wei;
+    uint32 constant COLD_EAGER_DELIVERY_COST = 119_700 wei;
 
     /// @notice Cold cost of lazy {SubscriptionConsumer}.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 constant COLD_LAZY_DELIVERY_COST = 300_000 wei;
+    /// @dev Additional costs: 2 slot mapping + 1 slot struct packed variables (timestamp, subscriptionId, interval) + 1 slot gas overhead for dynamic types
+    uint32 constant COLD_LAZY_DELIVERY_COST = COLD_EAGER_DELIVERY_COST + (3 * 20_000) + 20_000;
 }
 
 /// @title CoordinatorTest
@@ -768,6 +769,7 @@ contract CoordinatorEagerSubscriptionTest is CoordinatorTest {
     /// @notice Eager subscription delivery does not store outputs in inbox
     function testEagerSubscriptionDeliveryDoesNotStoreOutputsInInbox() public {
         // Create new eager subscription
+        vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
@@ -835,10 +837,8 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
 
     /// @notice Lazy subscription delivery stores outputs in inbox
     function testLazySubscriptionDeliveryStoresOutputsInInbox() public {
-        // Warp to 0
-        vm.warp(0);
-
         // Create new lazy subscription
+        vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
@@ -878,6 +878,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
     /// @notice Can deliver lazy and eager subscription responses to same contract
     function testCanDeliverLazyAndEagerSubscriptionToSameContract() public {
         // Create new eager subscription
+        vm.warp(0);
         uint32 subIdEager = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
@@ -940,34 +941,49 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
 
     /// @notice Can delivery lazy subscriptions more than once
     function testCanDeliverLazySubscriptionsMoreThanOnce() public {
-        // Create new lazy subscription w/ redundancy = 2
+        // Create new lazy subscription w/ frequency = 2, redundancy = 2
+        vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
             uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
-            1,
+            2,
             1 minutes,
             2,
             true
         );
 
-        // Deliver first interval from Alice
+        // Deliver first interval from {Alice, Bob}
         vm.warp(1 minutes);
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
-        // Deliver second interval from Alice
+        // Deliver second interval from {Alice, Bob}
         vm.warp(2 minutes);
         ALICE.deliverCompute(subId, 2, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverCompute(subId, 2, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Verify inbox stores correct {timestamp, subscriptionId, interval}
-        // 0th-index (first interval response)
+        // Alice 0th-index (first interval response)
         LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, 1 minutes);
         assertEq(item.subscriptionId, 1);
         assertEq(item.interval, 1);
 
-        // 1st-index (second interval response)
+        // Bob 0th-index (first interval response)
+        item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(BOB), 0);
+        assertEq(item.timestamp, 1 minutes);
+        assertEq(item.subscriptionId, 1);
+        assertEq(item.interval, 1);
+
+        // Alice 1st-index (second interval response)
         item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 1);
+        assertEq(item.timestamp, 2 minutes);
+        assertEq(item.subscriptionId, 1);
+        assertEq(item.interval, 2);
+
+        // Bob 1st-index (second interval response)
+        item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(BOB), 1);
         assertEq(item.timestamp, 2 minutes);
         assertEq(item.subscriptionId, 1);
         assertEq(item.interval, 2);

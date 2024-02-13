@@ -29,7 +29,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
 
     /// @notice Gas overhead in wei to create a new subscription via delegatee signature
     /// @dev Can fit within uint24, see comment for `DELEGATEE_OVERHEAD_CACHED_WEI` for details
-    uint256 public constant DELEGATEE_OVERHEAD_CREATE_WEI = 105_600 wei;
+    uint256 public constant DELEGATEE_OVERHEAD_CREATE_WEI = 107_900 wei;
 
     /// @notice EIP-712 struct(Subscription) typeHash
     bytes32 private constant EIP712_SUBSCRIPTION_TYPEHASH = keccak256(

@@ -80,11 +80,8 @@ contract BalanceScale is SubscriptionConsumer {
     /// @param input balance scale params: [right-distance, right-weight, left-distance, left-weight]
     /// @param lazy whether to receive response lazily
     function initiatePrediction(int256[4] calldata input, bool lazy) external {
-        // Encode features
-        bytes memory features = abi.encode(input);
-
         // Make new subscription creation
-        uint32 id = _createComputeSubscription("BSM", 1000 gwei, 1_000_000 wei, 1, 0 minutes, 1, lazy);
+        uint32 id = _createComputeSubscription("BSM", 1000 gwei, 5_000_000 wei, 1, 0 minutes, 1, lazy);
 
         // Store input data
         data[id] = input;

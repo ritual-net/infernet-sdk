@@ -67,7 +67,7 @@ contract Coordinator {
     ///      before delivering responses to consumer contracts
     /// @dev A uint16 is sufficient but we are not packing variables so control plane cost is higher because of type
     ///      casting during operations. Thus, we can just stick to uint256
-    uint256 public constant DELIVERY_OVERHEAD_WEI = 56_600 wei;
+    uint256 public constant DELIVERY_OVERHEAD_WEI = 58_150 wei;
 
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE

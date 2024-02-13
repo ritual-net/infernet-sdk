@@ -106,6 +106,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Initialize mock callback consumer w/ assigned delegate
         CALLBACK = new MockDelegatorCallbackConsumer(address(registry), DELEGATEE_ADDRESS);
+
+        // Initialize mock subscription consumer w/ assigned delegate
+        SUBSCRIPTION = new MockDelegatorSubscriptionConsumer(address(registry), DELEGATEE_ADDRESS);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -87,12 +87,16 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     /// @notice Active nodes can store data to inbox
     function testFuzzActiveNodesCanStoreDataToInbox(
         address node,
-        uint256 timestamp,
+        uint32 timestamp,
         bytes32 containerId,
         bytes calldata input,
         bytes calldata output,
         bytes calldata proof
     ) public {
+        // Assume address cannot be an already active node (ALICE, BOB)
+        vm.assume(node != address(ALICE));
+        vm.assume(node != address(BOB));
+
         // Mock node address for full execution
         vm.startPrank(node);
 
@@ -174,15 +178,15 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
 
         // Setup mock containerIds
         bytes32[] memory mockContainerIds = new bytes32[](2);
-        mockContainerIds[0] = "1";
-        mockContainerIds[1] = "2";
+        mockContainerIds[0] = bytes32("1");
+        mockContainerIds[1] = bytes32("2");
 
         for (uint256 i = 0; i < 2; i++) {
             // Collect mockContainerId
             bytes32 mockContainerId = mockContainerIds[i];
 
             // Write to {mockContainerIds[i], ALICE, 0}
-            vm.expectEmit(address(ALICE));
+            vm.expectEmit(address(INBOX));
             emit NewInboxItem(mockContainerId, address(ALICE), 0);
             ALICE.write(mockContainerId, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
@@ -205,7 +209,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
 
         for (uint256 i = 0; i < 2; i++) {
             // Write to {containerId, ALICE, i}
-            vm.expectEmit(address(ALICE));
+            vm.expectEmit(address(INBOX));
             emit NewInboxItem(HASHED_MOCK_CONTAINER_ID, address(ALICE), i);
             ALICE.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
@@ -230,7 +234,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
             1,
             1 minutes,
             1,
@@ -278,7 +282,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_DELIVERY_COST,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
             1,
             1 minutes,
             1,
@@ -324,8 +328,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             MockNode node = nodes[i];
 
             // Write to {containerId, node, 0}
-            vm.expectEmit(address(node));
-            emit NewInboxItem(HASHED_MOCK_CONTAINER_ID, address(node), i);
+            vm.expectEmit(address(INBOX));
+            emit NewInboxItem(HASHED_MOCK_CONTAINER_ID, address(node), 0);
             node.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
             // Verify written data
@@ -360,7 +364,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
 
     /// @notice Coordinator can call `writeViaCoordinator`
     function testFuzzOnlyCoordinatorCanCallAuthenticatedWrite(
-        uint256 timestamp,
+        uint32 timestamp,
         bytes32 containerId,
         address node,
         uint32 subscriptionId,
@@ -407,7 +411,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     }
 
     /// @notice Correct immutable timestamp data is stored when writing data
-    function testFuzzCorrectImmutableTimestampStored(uint256 timestamp) public {
+    function testFuzzCorrectImmutableTimestampStored(uint32 timestamp) public {
         // Warp to timestamp
         vm.warp(timestamp);
 
@@ -421,14 +425,15 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
 
     /// @notice Inbox items are ordered serially by time
     /// @dev This is largely a redundant test because time moves forward and so do array indices
-    function testFuzzInboxItemsAreOrderedSeriallyByTime(uint256 startTimestamp) public {
-        // Assume start timestamp + 10 is less than or equal to max uint256
-        vm.assume(startTimestamp + 10 <= UINT256_MAX);
+    function testFuzzInboxItemsAreOrderedSeriallyByTime(uint32 startTimestamp) public {
+        // Assume start timestamp + 10 is less than max uint32
+        // Note: Best practice to use bound vs vm.assume here
+        uint256 castStartTimestamp = bound(startTimestamp, 0, type(uint32).max - 10);
 
         // Iterate and write to inbox as ALICE
-        for (uint256 timestamp = startTimestamp; timestamp < startTimestamp + 10; timestamp++) {
+        for (uint256 ts = castStartTimestamp; ts < castStartTimestamp + 10; ts++) {
             // Warp to timestamp
-            vm.warp(timestamp);
+            vm.warp(ts);
 
             // Write to inbox as ALICE
             ALICE.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
@@ -437,7 +442,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         // Verify that inbox items are ordered serially by time
         for (uint256 i = 0; i < 10; i++) {
             LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), i);
-            assertEq(item.timestamp, startTimestamp + i);
+            assertEq(item.timestamp, castStartTimestamp + i);
         }
     }
 }
