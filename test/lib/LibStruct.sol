@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Inbox} from "../../src/Inbox.sol";
 import {Coordinator} from "../../src/Coordinator.sol";
 import {MockBaseConsumer} from "../mocks/consumer/Base.sol";
 
@@ -36,6 +37,16 @@ library LibStruct {
         bytes proof;
         bytes32 containerId;
         uint256 index;
+    }
+
+    /// @notice Reexported Inbox.InboxItem
+    struct InboxItem {
+        uint32 timestamp;
+        uint32 subscriptionId;
+        uint32 interval;
+        bytes input;
+        bytes output;
+        bytes proof;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -95,5 +106,30 @@ library LibStruct {
 
         // Return created struct
         return LibStruct.DeliveredOutput(id, subInterval, subRedundancy, node, input, output, proof, containerId, index);
+    }
+
+    /// @notice Coerce Inbox.InboxItem to LibStruct.InboxItem
+    /// @param inbox inbox
+    /// @param containerId compute container ID
+    /// @param node delivering node address
+    /// @param index item index
+    /// @return LibStruct.InboxItem
+    function getInboxItem(Inbox inbox, bytes32 containerId, address node, uint256 index)
+        external
+        view
+        returns (LibStruct.InboxItem memory)
+    {
+        // Collect inbox item from storage
+        (
+            uint32 timestamp,
+            uint32 subscriptionId,
+            uint32 interval,
+            bytes memory input,
+            bytes memory output,
+            bytes memory proof
+        ) = inbox.store(containerId, node, index);
+
+        // Return created struct
+        return LibStruct.InboxItem(timestamp, subscriptionId, interval, input, output, proof);
     }
 }

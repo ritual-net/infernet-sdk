@@ -40,6 +40,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     /// @return Optional compute container proof parameters
     function readMockInbox(bytes32 containerId, address node, uint256 index)
         external
+        view
         returns (uint32, uint32, uint32, bytes memory, bytes memory, bytes memory)
     {
         return _readInbox(containerId, node, index);
