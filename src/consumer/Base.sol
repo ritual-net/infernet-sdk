@@ -3,13 +3,15 @@ pragma solidity ^0.8.4;
 
 import {Registry} from "../Registry.sol";
 import {Coordinator} from "../Coordinator.sol";
+import {InboxReader} from "../pattern/InboxReader.sol";
 
 /// @title BaseConsumer
 /// @notice Handles receiving container compute responses from Infernet coordinator
 /// @notice Handles exposing container inputs to Infernet nodes via `getContainerInputs()`
+/// @dev Inherits `InboxReader` to inherit functions to read `Inbox` for lazy subscriptions
 /// @dev Contains a single public entrypoint `rawReceiveCompute` callable by only the Infernet coordinator. Once
 ///      call origin is verified, parameters are proxied to internal function `_receiveCompute`
-abstract contract BaseConsumer {
+abstract contract BaseConsumer is InboxReader {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -32,7 +34,7 @@ abstract contract BaseConsumer {
 
     /// @notice Initialize new BaseConsumer
     /// @param registry registry address
-    constructor(address registry) {
+    constructor(address registry) InboxReader(registry) {
         // Setup Coordinator (via address from canonical registry)
         COORDINATOR = Coordinator(Registry(registry).COORDINATOR());
     }
@@ -48,9 +50,11 @@ abstract contract BaseConsumer {
     /// @param interval subscription interval
     /// @param redundancy after this call succeeds, how many nodes will have delivered a response for this interval
     /// @param node address of responding Infernet node
-    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both)
-    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional off-chain container execution proof (or arbitrary metadata)
+    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both), empty for lazy subscriptions
+    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data), empty for lazy subscriptions
+    /// @param proof optional off-chain container execution proof (or arbitrary metadata), empty for lazy subscriptions
+    /// @param containerId if lazy subscription, subscription compute container ID, else empty
+    /// @param index if lazy subscription, `Inbox` lazy store index, else empty
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -58,11 +62,13 @@ abstract contract BaseConsumer {
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) internal virtual {}
 
     /// @notice View function to broadcast dynamic container inputs to off-chain Infernet nodes
-    /// @dev Develpers can modify this function to return dynamic inputs
+    /// @dev Developers can modify this function to return dynamic inputs
     /// @param subscriptionId subscription ID to collect container inputs for
     /// @param interval subscription interval to collect container inputs for
     /// @param timestamp timestamp at which container inputs are collected
@@ -84,9 +90,11 @@ abstract contract BaseConsumer {
     /// @param interval subscription interval
     /// @param redundancy after this call succeeds, how many nodes will have delivered a response for this interval
     /// @param node address of responding Infernet node
-    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both)
-    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional off-chain container execution proof (or arbitrary metadata)
+    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both), empty for lazy subscriptions
+    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data), empty for lazy subscriptions
+    /// @param proof optional off-chain container execution proof (or arbitrary metadata), empty for lazy subscriptions
+    /// @param containerId if lazy subscription, subscription compute container ID, else empty
+    /// @param index if lazy subscription, `Inbox` lazy store index, else empty
     function rawReceiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -94,7 +102,9 @@ abstract contract BaseConsumer {
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) external {
         // Ensure caller is coordinator
         if (msg.sender != address(COORDINATOR)) {
@@ -102,6 +112,6 @@ abstract contract BaseConsumer {
         }
 
         // Call internal receive function, since caller is validated
-        _receiveCompute(subscriptionId, interval, redundancy, node, input, output, proof);
+        _receiveCompute(subscriptionId, interval, redundancy, node, input, output, proof, containerId, index);
     }
 }

@@ -49,7 +49,8 @@ abstract contract CallbackConsumer is BaseConsumer {
             maxGasLimit,
             1, // frequency == 1, one-time subscription
             0, // period == 0, available to be responded to immediately
-            redundancy
+            redundancy,
+            false // lazy == false, always eagerly await subscription response
         );
 
         // Store inputs by subscriptionId (to be retrieved by off-chain Infernet nodes)

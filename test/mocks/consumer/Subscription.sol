@@ -20,7 +20,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockSubscriptionConsumer
+    /// @notice Create new MockSubscriptionConsumer
     /// @param registry registry address
     constructor(address registry) SubscriptionConsumer(registry) {}
 
@@ -28,8 +28,26 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
                            UTILITY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Mock read interface to `Inbox` `InboxItem`(s)
+    /// @param containerId compute container ID
+    /// @param node delivering node address
+    /// @param index item index
+    /// @return `InboxItem` immutable creation timestamp
+    /// @return Associated subscription ID (`0` if none)
+    /// @return Associated subscription interval (`0` if none)
+    /// @return Optional compute container input parameters
+    /// @return Optional compute container output parameters
+    /// @return Optional compute container proof parameters
+    function readMockInbox(bytes32 containerId, address node, uint256 index)
+        external
+        view
+        returns (uint32, uint32, uint32, bytes memory, bytes memory, bytes memory)
+    {
+        return _readInbox(containerId, node, index);
+    }
+
     /// @notice Create new mock subscription
-    /// @dev Parameter interface conforms to same as `SubscriptionConsumer._createContainerSubscription`
+    /// @dev Parameter interface conforms to same as `SubscriptionConsumer._createComputeSubscription`
     /// @dev Augmented with checks
     /// @dev Checks returned subscription ID is serially conforming
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs
@@ -39,7 +57,8 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
-        uint16 redundancy
+        uint16 redundancy,
+        bool lazy
     ) external returns (uint32) {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
@@ -48,7 +67,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
 
         // Create new subscription
         uint32 actualSubscriptionID =
-            _createComputeSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy);
+            _createComputeSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy, lazy);
 
         // Assert ID expectations
         assertEq(exepectedSubscriptionID, actualSubscriptionID);
@@ -65,6 +84,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         assertEq(sub.frequency, frequency);
         assertEq(sub.period, period);
         assertEq(sub.containerId, keccak256(abi.encode(containerId)));
+        assertEq(sub.lazy, lazy);
 
         // Explicitly return subscription ID
         return actualSubscriptionID;
@@ -79,7 +99,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
 
         // Get subscription owner & assert zeroed-out
         address expected = address(0);
-        (address actual,,,,,,,) = COORDINATOR.subscriptions(subscriptionId);
+        (address actual,,,,,,,,) = COORDINATOR.subscriptions(subscriptionId);
         assertEq(actual, expected);
     }
 
@@ -106,7 +126,9 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) internal override {
         // Log delivered output
         outputs[subscriptionId][interval][redundancy] = DeliveredOutput({
@@ -116,7 +138,9 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
             node: node,
             input: input,
             output: output,
-            proof: proof
+            proof: proof,
+            containerId: containerId,
+            index: index
         });
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Inbox} from "../../src/Inbox.sol";
 import {Registry} from "../../src/Registry.sol";
 import {NodeManager} from "../../src/NodeManager.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
@@ -16,8 +17,12 @@ contract MockNode is StdAssertions {
 
     /// @notice Node Manager
     NodeManager internal immutable NODE_MANAGER;
+
     /// @notice Coordinator
     EIP712Coordinator internal immutable COORDINATOR;
+
+    /// @notice Inbox
+    Inbox internal immutable INBOX;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -26,9 +31,10 @@ contract MockNode is StdAssertions {
     /// Creates new MockNode
     /// @param registry registry contract
     constructor(Registry registry) {
-        // Collect Node Manager + Coordinator from registry
+        // Collect Node Manager, Coordinator, Inbox from registry
         NODE_MANAGER = NodeManager(registry.NODE_MANAGER());
         COORDINATOR = EIP712Coordinator(registry.COORDINATOR());
+        INBOX = Inbox(registry.INBOX());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -117,5 +123,13 @@ contract MockNode is StdAssertions {
         bytes calldata proof
     ) external {
         COORDINATOR.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, input, output, proof);
+    }
+
+    /// @dev Wrapper function (calling Inbox with msg.sender == node)
+    function write(bytes32 containerId, bytes calldata input, bytes calldata output, bytes calldata proof)
+        external
+        returns (uint256)
+    {
+        return INBOX.write(containerId, input, output, proof);
     }
 }

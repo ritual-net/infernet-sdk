@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Inbox} from "../../src/Inbox.sol";
 import {Coordinator} from "../../src/Coordinator.sol";
 import {MockBaseConsumer} from "../mocks/consumer/Base.sol";
 
@@ -22,6 +23,7 @@ library LibStruct {
         uint32 frequency;
         uint32 period;
         bytes32 containerId;
+        bool lazy;
     }
 
     /// @notice Reexported MockBaseConsumer.DeliveredOutput
@@ -30,6 +32,18 @@ library LibStruct {
         uint32 interval;
         uint16 redundancy;
         address node;
+        bytes input;
+        bytes output;
+        bytes proof;
+        bytes32 containerId;
+        uint256 index;
+    }
+
+    /// @notice Reexported Inbox.InboxItem
+    struct InboxItem {
+        uint32 timestamp;
+        uint32 subscriptionId;
+        uint32 interval;
         bytes input;
         bytes output;
         bytes proof;
@@ -57,12 +71,13 @@ library LibStruct {
             uint16 redundancy,
             uint48 maxGasPrice,
             uint32 maxGasLimit,
-            bytes32 containerId
+            bytes32 containerId,
+            bool lazy
         ) = coordinator.subscriptions(subscriptionId);
 
         // Return created struct
         return LibStruct.Subscription(
-            activeAt, owner, maxGasPrice, redundancy, maxGasLimit, frequency, period, containerId
+            activeAt, owner, maxGasPrice, redundancy, maxGasLimit, frequency, period, containerId, lazy
         );
     }
 
@@ -84,10 +99,37 @@ library LibStruct {
             address node,
             bytes memory input,
             bytes memory output,
-            bytes memory proof
+            bytes memory proof,
+            bytes32 containerId,
+            uint256 index
         ) = consumer.outputs(subId, interval, redundancy);
 
         // Return created struct
-        return LibStruct.DeliveredOutput(id, subInterval, subRedundancy, node, input, output, proof);
+        return LibStruct.DeliveredOutput(id, subInterval, subRedundancy, node, input, output, proof, containerId, index);
+    }
+
+    /// @notice Coerce Inbox.InboxItem to LibStruct.InboxItem
+    /// @param inbox inbox
+    /// @param containerId compute container ID
+    /// @param node delivering node address
+    /// @param index item index
+    /// @return LibStruct.InboxItem
+    function getInboxItem(Inbox inbox, bytes32 containerId, address node, uint256 index)
+        external
+        view
+        returns (LibStruct.InboxItem memory)
+    {
+        // Collect inbox item from storage
+        (
+            uint32 timestamp,
+            uint32 subscriptionId,
+            uint32 interval,
+            bytes memory input,
+            bytes memory output,
+            bytes memory proof
+        ) = inbox.items(containerId, node, index);
+
+        // Return created struct
+        return LibStruct.InboxItem(timestamp, subscriptionId, interval, input, output, proof);
     }
 }

@@ -13,7 +13,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockCallbackConsumer
+    /// @notice Create new MockCallbackConsumer
     /// @param registry registry address
     constructor(address registry) CallbackConsumer(registry) {}
 
@@ -56,6 +56,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
         assertEq(sub.containerId, keccak256(abi.encode(containerId)));
+        assertEq(sub.lazy, false);
         assertEq(subscriptionInputs[actualSubscriptionID], inputs);
 
         // Explicitly return subscription ID
@@ -74,7 +75,9 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) internal override {
         // Log delivered output
         outputs[subscriptionId][interval][redundancy] = DeliveredOutput({
@@ -84,7 +87,9 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
             node: node,
             input: input,
             output: output,
-            proof: proof
+            proof: proof,
+            containerId: containerId,
+            index: index
         });
     }
 }

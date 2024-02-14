@@ -11,7 +11,7 @@ contract MockDelegatorCallbackConsumer is Delegator, MockCallbackConsumer {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockDelegatorCallbackConsumer
+    /// @notice Create new MockDelegatorCallbackConsumer
     /// @param registry registry address
     /// @param signer delegated signer address
     constructor(address registry, address signer) MockCallbackConsumer(registry) Delegator(signer) {}

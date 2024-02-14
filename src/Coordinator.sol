@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Inbox} from "./Inbox.sol";
 import {Registry} from "./Registry.sol";
 import {NodeManager} from "./NodeManager.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
@@ -20,7 +21,7 @@ contract Coordinator {
     /// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
     /// @dev Tightly-packed struct:
     ///      - [owner, activeAt, period, frequency]: [32, 160, 32, 32] = 256
-    ///      - [redundancy, maxGasPrice, maxGasLimit]: [16, 48, 32] = 96
+    ///      - [redundancy, maxGasPrice, maxGasLimit, containerId, lazy]: [16, 48, 32, 32, 8] = 136
     struct Subscription {
         /// @notice Subscription owner + recipient
         /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
@@ -51,6 +52,10 @@ contract Coordinator {
         /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
         /// @dev Better represented by a string[] type but constrained to hash(string) to keep struct and functions simple
         bytes32 containerId;
+        /// @notice `true` if container compute responses lazily stored as an `InboxItem`(s) in `Inbox`, else `false`
+        /// @dev When `true`, container compute outputs are stored in `Inbox` and not delivered eagerly to a consumer
+        /// @dev When `false`, container compute outputs are not stored in `Inbox` and are delivered eagerly to a consumer
+        bool lazy;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -62,7 +67,7 @@ contract Coordinator {
     ///      before delivering responses to consumer contracts
     /// @dev A uint16 is sufficient but we are not packing variables so control plane cost is higher because of type
     ///      casting during operations. Thus, we can just stick to uint256
-    uint256 public constant DELIVERY_OVERHEAD_WEI = 56_600 wei;
+    uint256 public constant DELIVERY_OVERHEAD_WEI = 58_150 wei;
 
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
@@ -70,6 +75,9 @@ contract Coordinator {
 
     /// @notice Node manager contract (handles node lifecycle)
     NodeManager internal immutable NODE_MANAGER;
+
+    /// @notice Inbox contract (handles lazily storing subscription responses)
+    Inbox internal immutable INBOX;
 
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
@@ -180,6 +188,8 @@ contract Coordinator {
     constructor(Registry registry) {
         // Collect node manager contract from registry
         NODE_MANAGER = NodeManager(registry.NODE_MANAGER());
+        // Collect inbox contract from registry
+        INBOX = Inbox(registry.INBOX());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -189,6 +199,8 @@ contract Coordinator {
     /// @notice Internal counterpart to `deliverCompute()` w/ ability to set custom gas overhead allowance
     /// @dev When called by `deliverCompute()`, `callingOverheadWei == 0` because no additional overhead imposed
     /// @dev When called by `deliverComputeDelegatee()`, `DELEGATEE_OVERHEAD_*_WEI` is imposed
+    /// @dev When `Subscription`(s) request lazy responses, stores container output in `Inbox`
+    /// @dev When `Subscription`(s) request eager responses, delivers container output directly via `BaseConsumer.rawReceiveCompute()`
     /// @param subscriptionId subscription ID to deliver
     /// @param deliveryInterval subscription `interval` to deliver
     /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
@@ -231,7 +243,7 @@ contract Coordinator {
         // Calculate subscription interval
         uint32 interval = getSubscriptionInterval(subscription.activeAt, subscription.period);
 
-        // Revert if not processing curent interval
+        // Revert if not processing current interval
         if (interval != deliveryInterval) {
             revert IntervalMismatch();
         }
@@ -266,9 +278,36 @@ contract Coordinator {
 
         // Deliver container compute output to contract (measuring execution cost)
         uint256 startingGas = gasleft();
-        BaseConsumer(subscription.owner).rawReceiveCompute(
-            subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof
-        );
+
+        // If delivering subscription lazily
+        if (subscription.lazy) {
+            // First, we must store the container outputs in `Inbox`
+            uint256 index = INBOX.writeViaCoordinator(
+                subscription.containerId, msg.sender, subscriptionId, interval, input, output, proof
+            );
+
+            // Next, we can deliver the subscription w/:
+            // 1. Nullifying container outputs (since we are storing outputs in the `Inbox`)
+            // 2. Providing a pointer to the `Inbox` entry via `containerId`, `index`
+            BaseConsumer(subscription.owner).rawReceiveCompute(
+                subscriptionId,
+                interval,
+                numRedundantDeliveries + 1,
+                msg.sender,
+                "",
+                "",
+                "",
+                subscription.containerId,
+                index
+            );
+        } else {
+            // Else, delivering subscription eagerly
+            // We must ensure `containerId`, `index` are nullified since eagerly delivering container outputs
+            BaseConsumer(subscription.owner).rawReceiveCompute(
+                subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof, bytes32(0), 0
+            );
+        }
+
         uint256 endingGas = gasleft();
 
         // Revert if gas used > allowed, we can make unchecked:
@@ -299,6 +338,7 @@ contract Coordinator {
     /// @param frequency max number of times to process subscription (i.e, `frequency == 1` is a one-time request)
     /// @param period period, in seconds, at which to progress each responding `interval`
     /// @param redundancy number of unique responding Infernet nodes
+    /// @param lazy whether to lazily store subscription responses
     /// @return subscription ID
     function createSubscription(
         string memory containerId,
@@ -306,7 +346,8 @@ contract Coordinator {
         uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
-        uint16 redundancy
+        uint16 redundancy,
+        bool lazy
     ) external returns (uint32) {
         // Get subscription id and increment
         // Unlikely this will ever overflow so we can toss in unchecked
@@ -327,7 +368,8 @@ contract Coordinator {
             maxGasLimit: maxGasLimit,
             frequency: frequency,
             period: period,
-            containerId: keccak256(abi.encode(containerId))
+            containerId: keccak256(abi.encode(containerId)),
+            lazy: lazy
         });
 
         // Emit new subscription
