@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {Inbox} from "../src/Inbox.sol";
 import {Test} from "forge-std/Test.sol";
 import {LibSign} from "./lib/LibSign.sol";
 import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
-import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
-import {Coordinator} from "../src/Coordinator.sol";
+import {Inbox, InboxItem} from "../src/Inbox.sol";
 import {NodeManager} from "../src/NodeManager.sol";
+import {DeliveredOutput} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
+import {Coordinator, Subscription} from "../src/Coordinator.sol";
 import {ICoordinatorEvents, CoordinatorConstants} from "./Coordinator.t.sol";
 import {MockDelegatorCallbackConsumer} from "./mocks/consumer/DelegatorCallback.sol";
 import {MockDelegatorSubscriptionConsumer} from "./mocks/consumer/DelegatorSubscription.sol";
@@ -116,8 +116,8 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Creates new mock subscription with sane defaults
-    function getMockSubscription() public view returns (Coordinator.Subscription memory) {
-        return Coordinator.Subscription({
+    function getMockSubscription() public view returns (Subscription memory) {
+        return Subscription({
             activeAt: uint32(block.timestamp),
             owner: address(CALLBACK),
             maxGasPrice: 1 gwei,
@@ -136,7 +136,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @param expiry signature expiry
     /// @param sub subscription
     /// @return typed EIP-712 message hash
-    function getMessage(uint32 nonce, uint32 expiry, Coordinator.Subscription memory sub)
+    function getMessage(uint32 nonce, uint32 expiry, Subscription memory sub)
         public
         view
         returns (bytes32)
@@ -154,7 +154,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 id = COORDINATOR.id();
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Check max subscriber nonce
         uint32 maxSubscriberNonce = COORDINATOR.maxSubscriberNonce(sub.owner);
@@ -173,7 +173,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(subscriptionId, id);
 
         // Assert subscription data is correctly stored
-        LibStruct.Subscription memory actual = LibStruct.getSubscription(COORDINATOR, id);
+        Subscription memory actual = COORDINATOR.getSubscription(id);
         assertEq(sub.activeAt, actual.activeAt);
         assertEq(sub.owner, actual.owner);
         assertEq(sub.maxGasPrice, actual.maxGasPrice);
@@ -201,7 +201,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
     function testCannotCreateDelegatedSubscriptionWhereSignatureExpired() public {
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -230,7 +230,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         vm.assume(privateKey != 0);
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -249,7 +249,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Can create new subscription via EIP712 signature
     function testCanCreateNewSubscriptionViaEIP712() public {
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -265,7 +265,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(subscriptionId, 1);
 
         // Assert subscription data is correctly stored
-        LibStruct.Subscription memory actual = LibStruct.getSubscription(COORDINATOR, 1);
+        Subscription memory actual = COORDINATOR.getSubscription(1);
         assertEq(sub.activeAt, actual.activeAt);
         assertEq(sub.owner, actual.owner);
         assertEq(sub.maxGasPrice, actual.maxGasPrice);
@@ -283,7 +283,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Cannot use valid delegated subscription from old signer
     function testCannotUseValidDelegatedSubscriptionFromOldSigner() public {
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -305,7 +305,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Can use existing subscription created by old signer
     function testCanUseExistingDelegatedSubscriptionFromOldSigner() public {
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -334,7 +334,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 nonce = 0;
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -366,7 +366,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Assert that we are instead simply returned the existing subscription
         assertEq(subscriptionId, 1);
         // Also, assert that the redundancy has not changed
-        LibStruct.Subscription memory actual = LibStruct.getSubscription(COORDINATOR, subscriptionId);
+        Subscription memory actual = COORDINATOR.getSubscription(subscriptionId);
         assertEq(actual.redundancy, oldRedundancy);
 
         // Now, ensure that we can't resign with a new delegatee and force nonce replay
@@ -382,7 +382,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Assert that we are instead simply returned the existing subscription
         assertEq(subscriptionId, 1);
         // Also, assert that the redundancy has not changed
-        actual = LibStruct.getSubscription(COORDINATOR, subscriptionId);
+        actual = COORDINATOR.getSubscription(subscriptionId);
         assertEq(actual.redundancy, oldRedundancy);
     }
 
@@ -390,7 +390,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     function testCanCreateDelegatedSubscriptionWithUnorderedNonces() public {
         // Create subscription with nonce 10
         uint32 nonce = 10;
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
         bytes32 message = getMessage(nonce, expiry, sub);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
@@ -446,7 +446,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         COORDINATOR.cancelSubscription(subscriptionId);
 
         // Assert cancelled status
-        LibStruct.Subscription memory actual = LibStruct.getSubscription(COORDINATOR, 1);
+        Subscription memory actual = COORDINATOR.getSubscription(1);
         assertEq(actual.owner, address(0));
     }
 
@@ -456,7 +456,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -475,8 +475,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         );
 
         // Get response
-        LibStruct.DeliveredOutput memory out =
-            LibStruct.getDeliveredOutput(CALLBACK, subscriptionId, deliveryInterval, 1);
+        DeliveredOutput memory out = CALLBACK.getDeliveredOutput(subscriptionId, deliveryInterval, 1);
         assertEq(out.subscriptionId, subscriptionId);
         assertEq(out.interval, deliveryInterval);
         assertEq(out.redundancy, 1);
@@ -495,7 +494,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Modify dummy subscription to be lazy
         sub.owner = address(SUBSCRIPTION);
@@ -520,8 +519,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         );
 
         // Get response
-        LibStruct.DeliveredOutput memory out =
-            LibStruct.getDeliveredOutput(SUBSCRIPTION, subscriptionId, deliveryInterval, 1);
+        DeliveredOutput memory out = SUBSCRIPTION.getDeliveredOutput(subscriptionId, deliveryInterval, 1);
         assertEq(out.subscriptionId, subscriptionId);
         assertEq(out.interval, deliveryInterval);
         assertEq(out.redundancy, 1);
@@ -532,7 +530,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(out.index, 0);
 
         // Ensure response is stored in inbox
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, block.timestamp);
         assertEq(item.subscriptionId, subscriptionId);
         assertEq(item.interval, deliveryInterval);
@@ -551,7 +549,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -577,7 +575,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -610,7 +608,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
         // Modify dummy subscription to allow > 1 redundancy
         sub.redundancy = 2;
 
@@ -652,7 +650,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
 
         // Create new dummy subscription
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
 
         // Purposefully reduce gasLimit of subscription down ~200 gwei
         sub.maxGasLimit -= 200;
@@ -674,7 +672,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Can deliver compute response for already created subscription with reduced gas limit
     function testDeliverReducedGasCostSubscriptionCachedSubscription() public {
         // Create new subscription with redundancy = 2
-        Coordinator.Subscription memory sub = getMockSubscription();
+        Subscription memory sub = getMockSubscription();
         sub.redundancy = 2;
 
         // Generate signature expiry

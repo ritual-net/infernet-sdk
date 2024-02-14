@@ -4,6 +4,7 @@ pragma solidity ^0.8.4;
 import {Inbox} from "../../src/Inbox.sol";
 import {Registry} from "../../src/Registry.sol";
 import {NodeManager} from "../../src/NodeManager.sol";
+import {Subscription} from "../../src/Coordinator.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
 import {EIP712Coordinator} from "../../src/EIP712Coordinator.sol";
 
@@ -113,7 +114,7 @@ contract MockNode is StdAssertions {
     function deliverComputeDelegatee(
         uint32 nonce,
         uint32 expiry,
-        EIP712Coordinator.Subscription calldata sub,
+        Subscription calldata sub,
         uint8 v,
         bytes32 r,
         bytes32 s,

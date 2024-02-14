@@ -35,5 +35,24 @@ abstract contract MockBaseConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Subscription ID => Interval => Redundancy => DeliveredOutput
-    mapping(uint32 => mapping(uint32 => mapping(uint16 => DeliveredOutput))) public outputs;
+    /// @dev Visibility restricted to `internal` to allow downstream inheriting contracts to modify mapping
+    mapping(uint32 => mapping(uint32 => mapping(uint16 => DeliveredOutput))) internal outputs;
+
+    /*//////////////////////////////////////////////////////////////
+                               FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Read `DeliveredOutput` from `outputs`
+    /// @dev Useful read interface to return `DeliveredOutput` struct rather than destructured parameters
+    /// @param subscriptionId subscription ID
+    /// @param interval subscription interval
+    /// @param redundancy after this call succeeds, how many nodes will have delivered a response for this interval
+    /// @return output delivered from node
+    function getDeliveredOutput(uint32 subscriptionId, uint32 interval, uint16 redundancy)
+        external
+        view
+        returns (DeliveredOutput memory)
+    {
+        return outputs[subscriptionId][interval][redundancy];
+    }
 }
