@@ -34,10 +34,10 @@ contract Inbox {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Node manager contract (handles node lifecycle)
-    NodeManager internal immutable NODE_MANAGER;
+    NodeManager private immutable NODE_MANAGER;
 
     /// @notice Coordinator contract address
-    address internal immutable COORDINATOR_ADDRESS;
+    address private immutable COORDINATOR_ADDRESS;
 
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE

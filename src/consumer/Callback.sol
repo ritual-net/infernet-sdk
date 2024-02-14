@@ -12,6 +12,7 @@ abstract contract CallbackConsumer is BaseConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice subscriptionId => callback input data
+    /// @dev Could be restricted to `private` visibility but kept `internal` for better testing support
     mapping(uint32 => bytes) internal subscriptionInputs;
 
     /*//////////////////////////////////////////////////////////////
