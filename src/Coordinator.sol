@@ -6,58 +6,58 @@ import {Registry} from "./Registry.sol";
 import {NodeManager} from "./NodeManager.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 
+/*//////////////////////////////////////////////////////////////
+                            PUBLIC STRUCTS
+//////////////////////////////////////////////////////////////*/
+
+/// @notice A subscription is the fundamental unit of Infernet
+/// @dev A subscription represents some request configuration for off-chain compute via containers on Infernet nodes
+/// @dev A subscription with `frequency == 1` is a one-time subscription (a callback)
+/// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
+/// @dev Tightly-packed struct:
+///      - [owner, activeAt, period, frequency]: [32, 160, 32, 32] = 256
+///      - [redundancy, maxGasPrice, maxGasLimit, containerId, lazy]: [16, 48, 32, 32, 8] = 136
+struct Subscription {
+    /// @notice Subscription owner + recipient
+    /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
+    /// @dev Default initializes to `address(0)`
+    address owner;
+    /// @notice Timestamp when subscription is first active and an off-chain Infernet node can respond
+    /// @dev When `period == 0`, the subscription is immediately active
+    /// @dev When `period > 0`, subscription is active at `createdAt + period`
+    uint32 activeAt;
+    /// @notice Time, in seconds, between each subscription interval
+    /// @dev At worst, assuming subscription occurs once/year << uint32
+    uint32 period;
+    /// @notice Number of times a subscription is processed
+    /// @dev At worst, assuming 30 req/min * 60 min * 24 hours * 365 days * 10 years << uint32
+    uint32 frequency;
+    /// @notice Number of unique nodes that can fulfill a subscription at each `interval`
+    /// @dev uint16 allows for >255 nodes (uint8) but <65,535
+    uint16 redundancy;
+    /// @notice Max gas price in wei paid by an Infernet node when fulfilling callback
+    /// @dev uint40 caps out at ~1099 gwei, uint48 allows up to ~281K gwei
+    uint48 maxGasPrice;
+    /// @notice Max gas limit in wei used by an Infernet node when fulfilling callback
+    /// @dev Must be at least equal to the gas limit of your receiving function execution + DELIVERY_OVERHEAD_WEI
+    /// @dev uint24 is too small at ~16.7M (<30M mainnet gas limit), but uint32 is more than enough (~4.2B wei)
+    uint32 maxGasLimit;
+    /// @notice Container identifier used by off-chain Infernet nodes to determine which container is used to fulfill a subscription
+    /// @dev Represented as fixed size hash of stringified list of containers
+    /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
+    /// @dev Better represented by a string[] type but constrained to hash(string) to keep struct and functions simple
+    bytes32 containerId;
+    /// @notice `true` if container compute responses lazily stored as an `InboxItem`(s) in `Inbox`, else `false`
+    /// @dev When `true`, container compute outputs are stored in `Inbox` and not delivered eagerly to a consumer
+    /// @dev When `false`, container compute outputs are not stored in `Inbox` and are delivered eagerly to a consumer
+    bool lazy;
+}
+
 /// @title Coordinator
 /// @notice Coordination layer between consuming smart contracts and off-chain Infernet nodes
 /// @dev Allows creating and deleting `Subscription`(s)
 /// @dev Allows nodes with `NodeManager.NodeStatus.Active` to deliver subscription outputs via off-chain container compute
 contract Coordinator {
-    /*//////////////////////////////////////////////////////////////
-                                STRUCTS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice A subscription is the fundamental unit of Infernet
-    /// @dev A subscription represents some request configuration for off-chain compute via containers on Infernet nodes
-    /// @dev A subscription with `frequency == 1` is a one-time subscription (a callback)
-    /// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
-    /// @dev Tightly-packed struct:
-    ///      - [owner, activeAt, period, frequency]: [32, 160, 32, 32] = 256
-    ///      - [redundancy, maxGasPrice, maxGasLimit, containerId, lazy]: [16, 48, 32, 32, 8] = 136
-    struct Subscription {
-        /// @notice Subscription owner + recipient
-        /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
-        /// @dev Default initializes to `address(0)`
-        address owner;
-        /// @notice Timestamp when subscription is first active and an off-chain Infernet node can respond
-        /// @dev When `period == 0`, the subscription is immediately active
-        /// @dev When `period > 0`, subscription is active at `createdAt + period`
-        uint32 activeAt;
-        /// @notice Time, in seconds, between each subscription interval
-        /// @dev At worst, assuming subscription occurs once/year << uint32
-        uint32 period;
-        /// @notice Number of times a subscription is processed
-        /// @dev At worst, assuming 30 req/min * 60 min * 24 hours * 365 days * 10 years << uint32
-        uint32 frequency;
-        /// @notice Number of unique nodes that can fulfill a subscription at each `interval`
-        /// @dev uint16 allows for >255 nodes (uint8) but <65,535
-        uint16 redundancy;
-        /// @notice Max gas price in wei paid by an Infernet node when fulfilling callback
-        /// @dev uint40 caps out at ~1099 gwei, uint48 allows up to ~281K gwei
-        uint48 maxGasPrice;
-        /// @notice Max gas limit in wei used by an Infernet node when fulfilling callback
-        /// @dev Must be at least equal to the gas limit of your receiving function execution + DELIVERY_OVERHEAD_WEI
-        /// @dev uint24 is too small at ~16.7M (<30M mainnet gas limit), but uint32 is more than enough (~4.2B wei)
-        uint32 maxGasLimit;
-        /// @notice Container identifier used by off-chain Infernet nodes to determine which container is used to fulfill a subscription
-        /// @dev Represented as fixed size hash of stringified list of containers
-        /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
-        /// @dev Better represented by a string[] type but constrained to hash(string) to keep struct and functions simple
-        bytes32 containerId;
-        /// @notice `true` if container compute responses lazily stored as an `InboxItem`(s) in `Inbox`, else `false`
-        /// @dev When `true`, container compute outputs are stored in `Inbox` and not delivered eagerly to a consumer
-        /// @dev When `false`, container compute outputs are not stored in `Inbox` and are delivered eagerly to a consumer
-        bool lazy;
-    }
-
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -100,7 +100,8 @@ contract Coordinator {
 
     /// @notice subscriptionID => Subscription
     /// @dev 1-indexed, 0th-subscription is empty
-    mapping(uint32 => Subscription) public subscriptions;
+    /// @dev Visibility restricted to `internal` because we expose an explicit `getSubscription` view function that returns `Subscription` struct
+    mapping(uint32 => Subscription) internal subscriptions;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -330,6 +331,13 @@ contract Coordinator {
     /*//////////////////////////////////////////////////////////////
                                FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Returns `Subscription` from `subscriptions` mapping, indexed by `subscriptionId`
+    /// @dev Useful utility view function because by default public mappings with struct values return destructured parameters
+    /// @param subscriptionId subscription ID to collect
+    function getSubscription(uint32 subscriptionId) public view returns (Subscription memory) {
+        return subscriptions[subscriptionId];
+    }
 
     /// @notice Creates new subscription
     /// @param containerId compute container identifier used by off-chain Infernet node
