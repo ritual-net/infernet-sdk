@@ -52,7 +52,7 @@ contract Coordinator {
         /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
         /// @dev Better represented by a string[] type but constrained to hash(string) to keep struct and functions simple
         bytes32 containerId;
-        /// @notice Are subscription container compute responses lazily stored as `InboxItem`(s) in `Inbox`?
+        /// @notice `true` if container compute responses lazily stored as an `InboxItem`(s) in `Inbox`, else `false`
         /// @dev When `true`, container compute outputs are stored in `Inbox` and not delivered eagerly to a consumer
         /// @dev When `false`, container compute outputs are not stored in `Inbox` and are delivered eagerly to a consumer
         bool lazy;
@@ -243,7 +243,7 @@ contract Coordinator {
         // Calculate subscription interval
         uint32 interval = getSubscriptionInterval(subscription.activeAt, subscription.period);
 
-        // Revert if not processing curent interval
+        // Revert if not processing current interval
         if (interval != deliveryInterval) {
             revert IntervalMismatch();
         }

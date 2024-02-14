@@ -13,7 +13,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockCallbackConsumer
+    /// @notice Create new MockCallbackConsumer
     /// @param registry registry address
     constructor(address registry) CallbackConsumer(registry) {}
 

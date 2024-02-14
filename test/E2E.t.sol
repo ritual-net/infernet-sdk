@@ -4,12 +4,10 @@ pragma solidity ^0.8.4;
 import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
-import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {NodeManager} from "../src/NodeManager.sol";
 import {BalanceScale} from "./ezkl/BalanceScale.sol";
 import {DataAttestation} from "./ezkl/DataAttestor.sol";
-import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 
 /// @title BalanceScaleTest
 /// @notice Tests BalanceScale E2E demo implementation
@@ -27,9 +25,6 @@ contract BalanceScaleTest is Test {
     /// @notice BalanceScale demo implementation
     BalanceScale internal BALANCE_SCALE;
 
-    /// @notice Infernet coordinator
-    EIP712Coordinator internal COORDINATOR;
-
     /*//////////////////////////////////////////////////////////////
                                  SETUP
     //////////////////////////////////////////////////////////////*/
@@ -37,11 +32,7 @@ contract BalanceScaleTest is Test {
     function setUp() public {
         // Deploy contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator,) =
-            LibDeploy.deployContracts(initialNonce);
-
-        // Assign internals
-        COORDINATOR = coordinator;
+        (Registry registry, NodeManager nodeManager,,) = LibDeploy.deployContracts(initialNonce);
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
         initialNonce = vm.getNonce(address(this));

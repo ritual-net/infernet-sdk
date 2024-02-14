@@ -153,7 +153,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     }
 
     /// @notice Registered nodes cannot store data to inbox
-    function testFuzzRegisteredNodesCannotStoreDataToInbox(address node) public {
+    function testFuzzRegisteredYetNotActiveNodesCannotStoreDataToInbox(address node) public {
         // Assume address cannot be an active node (ALICE, BOB)
         vm.assume(node != address(ALICE));
         vm.assume(node != address(BOB));

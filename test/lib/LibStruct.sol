@@ -127,7 +127,7 @@ library LibStruct {
             bytes memory input,
             bytes memory output,
             bytes memory proof
-        ) = inbox.store(containerId, node, index);
+        ) = inbox.items(containerId, node, index);
 
         // Return created struct
         return LibStruct.InboxItem(timestamp, subscriptionId, interval, input, output, proof);

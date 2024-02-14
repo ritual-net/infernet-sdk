@@ -20,7 +20,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockSubscriptionConsumer
+    /// @notice Create new MockSubscriptionConsumer
     /// @param registry registry address
     constructor(address registry) SubscriptionConsumer(registry) {}
 
@@ -47,7 +47,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     }
 
     /// @notice Create new mock subscription
-    /// @dev Parameter interface conforms to same as `SubscriptionConsumer._createContainerSubscription`
+    /// @dev Parameter interface conforms to same as `SubscriptionConsumer._createComputeSubscription`
     /// @dev Augmented with checks
     /// @dev Checks returned subscription ID is serially conforming
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs

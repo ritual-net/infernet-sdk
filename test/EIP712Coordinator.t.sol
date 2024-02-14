@@ -489,7 +489,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(COORDINATOR.nodeResponded(key), true);
     }
 
-    /// @notice Can delegated deliver compute reponse, while creating new lazy subscription
+    /// @notice Can delegated deliver compute response, while creating new lazy subscription
     function testCanAtomicCreateLazySubscriptionAndDeliverOutput() public {
         // Starting nonce
         uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));

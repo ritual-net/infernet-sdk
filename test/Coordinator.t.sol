@@ -9,8 +9,6 @@ import {MockNode} from "./mocks/MockNode.sol";
 import {NodeManager} from "../src/NodeManager.sol";
 import {Coordinator} from "../src/Coordinator.sol";
 import {BaseConsumer} from "../src/consumer/Base.sol";
-import {MockBaseConsumer} from "./mocks/consumer/Base.sol";
-import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {MockCallbackConsumer} from "./mocks/consumer/Callback.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
 
@@ -22,9 +20,21 @@ interface ICoordinatorEvents {
     event SubscriptionFulfilled(uint32 indexed id, address indexed node);
 }
 
+/// @title EVMConstants
+/// @notice General constants for EVM parameters
+abstract contract EVMConstants {
+    /*//////////////////////////////////////////////////////////////
+                               CONSTANTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Cold SSTORE cost
+    /// @dev General approximation (not accounting for warm loads/etc.)
+    uint16 constant COLD_SSTORE_COST = 20_000 wei;
+}
+
 /// @title CoordinatorConstants
 /// @notice Base constants setup to inherit for Coordinator subtests
-abstract contract CoordinatorConstants {
+abstract contract CoordinatorConstants is EVMConstants {
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -55,7 +65,8 @@ abstract contract CoordinatorConstants {
     /// @notice Cold cost of lazy {SubscriptionConsumer}.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
     /// @dev Additional costs: 2 slot mapping + 1 slot struct packed variables (timestamp, subscriptionId, interval) + 1 slot gas overhead for dynamic types
-    uint32 constant COLD_LAZY_DELIVERY_COST = COLD_EAGER_DELIVERY_COST + (3 * 20_000) + 20_000;
+    uint32 constant COLD_LAZY_DELIVERY_COST =
+        COLD_EAGER_DELIVERY_COST + (2 * COLD_SSTORE_COST) + COLD_SSTORE_COST + COLD_SSTORE_COST;
 }
 
 /// @title CoordinatorTest
@@ -187,7 +198,8 @@ contract CoordinatorCallbackTest is CoordinatorTest {
 
         // Create new callback
         vm.expectEmit(address(COORDINATOR));
-        emit SubscriptionCreated(expected);
+        emit Coordinator.SubscriptionCreated(expected);
+        // emit SubscriptionCreated(expected);
         uint32 actual = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
 
         // Assert subscription ID is correctly stored

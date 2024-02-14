@@ -45,7 +45,7 @@ contract Inbox {
 
     /// @notice containerId => delivering node address => array of delivered compute responses
     /// @dev Notice that validation of an `InboxItem` corresponding to a `containerId` is left to a downstream consumer
-    mapping(bytes32 => mapping(address => InboxItem[])) public store;
+    mapping(bytes32 => mapping(address => InboxItem[])) public items;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -107,7 +107,7 @@ contract Inbox {
                            INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Allows pushing `InboxItem`(s) to `store`
+    /// @notice Allows pushing an `InboxItem` to `items`
     /// @param containerId compute container ID
     /// @param node delivering node address
     /// @param subscriptionId optional associated subscription ID (`0` if none)
@@ -125,8 +125,8 @@ contract Inbox {
         bytes calldata output,
         bytes calldata proof
     ) internal returns (uint256) {
-        // Push new inbox item to store
-        store[containerId][node].push(
+        // Push new inbox item to items store
+        items[containerId][node].push(
             InboxItem({
                 timestamp: uint32(block.timestamp),
                 subscriptionId: subscriptionId,
@@ -138,7 +138,7 @@ contract Inbox {
         );
 
         // Collect index of newly-added inbox item
-        uint256 index = store[containerId][node].length - 1;
+        uint256 index = items[containerId][node].length - 1;
 
         // Emit newly-added inbox item
         emit NewInboxItem(containerId, node, index);

@@ -12,7 +12,7 @@ contract MockDelegatorSubscriptionConsumer is Delegator, MockSubscriptionConsume
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockDelegatorSubscriptionConsumer
+    /// @notice Create new MockDelegatorSubscriptionConsumer
     /// @param registry registry address
     /// @param signer delegated signer address
     constructor(address registry, address signer) MockSubscriptionConsumer(registry) Delegator(signer) {}

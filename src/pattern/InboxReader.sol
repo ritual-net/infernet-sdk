@@ -30,7 +30,7 @@ abstract contract InboxReader {
                            INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Read interface to `Inbox` `InboxItem`(s)
+    /// @notice Read interface to `Inbox` `InboxItem`
     /// @param containerId compute container ID
     /// @param node delivering node address
     /// @param index item index
@@ -45,6 +45,6 @@ abstract contract InboxReader {
         view
         returns (uint32, uint32, uint32, bytes memory, bytes memory, bytes memory)
     {
-        return INBOX.store(containerId, node, index);
+        return INBOX.items(containerId, node, index);
     }
 }
