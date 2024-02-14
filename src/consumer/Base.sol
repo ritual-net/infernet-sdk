@@ -1,24 +1,28 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Inbox} from "../Inbox.sol";
 import {Registry} from "../Registry.sol";
 import {Coordinator} from "../Coordinator.sol";
-import {InboxReader} from "../pattern/InboxReader.sol";
 
 /// @title BaseConsumer
 /// @notice Handles receiving container compute responses from Infernet coordinator
 /// @notice Handles exposing container inputs to Infernet nodes via `getContainerInputs()`
-/// @dev Inherits `InboxReader` to inherit functions to read `Inbox` for lazy subscriptions
+/// @notice Declares internal `INBOX` reference to allow downstream consumers to read from `Inbox`
 /// @dev Contains a single public entrypoint `rawReceiveCompute` callable by only the Infernet coordinator. Once
 ///      call origin is verified, parameters are proxied to internal function `_receiveCompute`
-abstract contract BaseConsumer is InboxReader {
+abstract contract BaseConsumer {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Infernet Coordinator
+    /// @notice Coordinator
     /// @dev Internal visibility since COORDINATOR is consumed by inheriting contracts
     Coordinator internal immutable COORDINATOR;
+
+    /// @notice Inbox
+    /// @dev Internal visibility since INBOX can be consumed by inheriting readers
+    Inbox internal immutable INBOX;
 
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
@@ -34,9 +38,11 @@ abstract contract BaseConsumer is InboxReader {
 
     /// @notice Initialize new BaseConsumer
     /// @param registry registry address
-    constructor(address registry) InboxReader(registry) {
+    constructor(address registry) {
         // Setup Coordinator (via address from canonical registry)
         COORDINATOR = Coordinator(Registry(registry).COORDINATOR());
+        // Setup Inbox (via address from canonical registry)
+        INBOX = Inbox(Registry(registry).INBOX());
     }
 
     /*//////////////////////////////////////////////////////////////

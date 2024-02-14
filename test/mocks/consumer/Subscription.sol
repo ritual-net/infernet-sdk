@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {InboxItem} from "../../../src/Inbox.sol";
 import {LibStruct} from "../../lib/LibStruct.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
 import {MockBaseConsumer, DeliveredOutput} from "./Base.sol";
@@ -28,22 +29,13 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
                            UTILITY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mock read interface to `Inbox` `InboxItem`(s)
+    /// @notice Mock interface read an `InboxItem` from `Inbox`
     /// @param containerId compute container ID
     /// @param node delivering node address
     /// @param index item index
-    /// @return `InboxItem` immutable creation timestamp
-    /// @return Associated subscription ID (`0` if none)
-    /// @return Associated subscription interval (`0` if none)
-    /// @return Optional compute container input parameters
-    /// @return Optional compute container output parameters
-    /// @return Optional compute container proof parameters
-    function readMockInbox(bytes32 containerId, address node, uint256 index)
-        external
-        view
-        returns (uint32, uint32, uint32, bytes memory, bytes memory, bytes memory)
-    {
-        return _readInbox(containerId, node, index);
+    /// @return inbox item
+    function readMockInbox(bytes32 containerId, address node, uint256 index) external view returns (InboxItem memory) {
+        return INBOX.read(containerId, node, index);
     }
 
     /// @notice Create new mock subscription
