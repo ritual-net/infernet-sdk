@@ -74,10 +74,10 @@ contract Coordinator {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Node manager contract (handles node lifecycle)
-    NodeManager internal immutable NODE_MANAGER;
+    NodeManager private immutable NODE_MANAGER;
 
     /// @notice Inbox contract (handles lazily storing subscription responses)
-    Inbox internal immutable INBOX;
+    Inbox private immutable INBOX;
 
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
