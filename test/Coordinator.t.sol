@@ -198,8 +198,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
 
         // Create new callback
         vm.expectEmit(address(COORDINATOR));
-        emit Coordinator.SubscriptionCreated(expected);
-        // emit SubscriptionCreated(expected);
+        emit SubscriptionCreated(expected);
         uint32 actual = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
 
         // Assert subscription ID is correctly stored
