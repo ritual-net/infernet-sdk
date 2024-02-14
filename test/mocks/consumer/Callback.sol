@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {MockBaseConsumer} from "./Base.sol";
 import {LibStruct} from "../../lib/LibStruct.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
+import {MockBaseConsumer, DeliveredOutput} from "./Base.sol";
 import {CallbackConsumer} from "../../../src/consumer/Callback.sol";
 
 /// @title MockCallbackConsumer
