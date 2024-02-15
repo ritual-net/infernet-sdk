@@ -42,18 +42,19 @@ Ordering of sections in contract goes:
 
 1. SPDX identifier
 2. Imports
-3. Contract definition
-4. Structs
-5. Enums
-6. Constants
-7. Immutable variables
-8. Mutable variables
-9. Events
-10. Errors
-11. Modifiers
-12. Constructor
-13. Internal functions
-14. External functions
+3. Public structs
+4. Contract definition
+5. Structs
+6. Enums
+7. Constants
+8. Immutable variables
+9. Mutable variables
+10. Events
+11. Errors
+12. Modifiers
+13. Constructor
+14. Internal functions
+15. External functions
 
 Sections are delineated using headers generated from [transmissions11/headers](https://github.com/transmissions11/headers).
 

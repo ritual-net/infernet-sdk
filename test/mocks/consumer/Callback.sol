@@ -27,8 +27,8 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
     /// @dev Checks returned subscription ID is serially conforming
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs
     function createMockRequest(
-        string calldata containerId,
-        bytes calldata inputs,
+        string memory containerId,
+        bytes memory inputs,
         uint48 maxGasPrice,
         uint32 maxGasLimit,
         uint16 redundancy
