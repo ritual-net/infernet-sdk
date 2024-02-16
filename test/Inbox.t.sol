@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {Inbox} from "../src/Inbox.sol";
 import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
-import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
+import {Inbox, InboxItem} from "../src/Inbox.sol";
 import {NodeManager} from "../src/NodeManager.sol";
 import {CoordinatorConstants} from "./Coordinator.t.sol";
+import {DeliveredOutput} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
 
@@ -115,7 +115,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         INBOX.write(containerId, input, output, proof);
 
         // Verify correct write via direct read
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, containerId, node, 0);
+        InboxItem memory item = INBOX.read(containerId, node, 0);
         assertEq(item.timestamp, timestamp);
         assertEq(item.subscriptionId, 0);
         assertEq(item.interval, 0);
@@ -123,21 +123,14 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         assertEq(item.output, output);
         assertEq(item.proof, proof);
 
-        // Verify correct write via consumer with inherited InboxReader
-        (
-            uint32 readTimestamp,
-            uint32 readSubscriptionId,
-            uint32 readInterval,
-            bytes memory readInput,
-            bytes memory readOutput,
-            bytes memory readProof
-        ) = SUBSCRIPTION.readMockInbox(containerId, node, 0);
-        assertEq(readTimestamp, timestamp);
-        assertEq(readSubscriptionId, 0);
-        assertEq(readInterval, 0);
-        assertEq(readInput, input);
-        assertEq(readOutput, output);
-        assertEq(readProof, proof);
+        // Verify correct write via consumer with mock reader
+        item = SUBSCRIPTION.readMockInbox(containerId, node, 0);
+        assertEq(item.timestamp, timestamp);
+        assertEq(item.subscriptionId, 0);
+        assertEq(item.interval, 0);
+        assertEq(item.input, input);
+        assertEq(item.output, output);
+        assertEq(item.proof, proof);
     }
 
     /// @notice Inactive nodes cannot store data to inbox
@@ -191,7 +184,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             ALICE.write(mockContainerId, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
             // Verify written data
-            LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, mockContainerId, address(ALICE), 0);
+            InboxItem memory item = INBOX.read(mockContainerId, address(ALICE), 0);
             assertEq(item.timestamp, initialTimestamp);
             assertEq(item.subscriptionId, 0);
             assertEq(item.interval, 0);
@@ -214,7 +207,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             ALICE.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
             // Verify written data
-            LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), i);
+            InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), i);
             assertEq(item.timestamp, initialTimestamp);
             assertEq(item.subscriptionId, 0);
             assertEq(item.interval, 0);
@@ -248,7 +241,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Verify output is lazily delivered to subscriber
-        LibStruct.DeliveredOutput memory out = LibStruct.getDeliveredOutput(SUBSCRIPTION, subId, 1, 1);
+        DeliveredOutput memory out = SUBSCRIPTION.getDeliveredOutput(subId, 1, 1);
         assertEq(out.subscriptionId, subId);
         assertEq(out.interval, 1);
         assertEq(out.redundancy, 1);
@@ -260,7 +253,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         assertEq(out.index, 0);
 
         // Verify written data
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, initialTimestamp + 1 minutes);
         assertEq(item.subscriptionId, subId);
         assertEq(item.interval, 1);
@@ -294,7 +287,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Verify written data from direct write
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, initialTimestamp);
         assertEq(item.subscriptionId, 0);
         assertEq(item.interval, 0);
@@ -303,7 +296,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         assertEq(item.proof, MOCK_PROOF);
 
         // Verify written data from authenticated write
-        item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 1);
+        item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 1);
         assertEq(item.timestamp, 1 minutes);
         assertEq(item.subscriptionId, 1);
         assertEq(item.interval, 1);
@@ -333,7 +326,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             node.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
             // Verify written data
-            LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(node), 0);
+            InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(node), 0);
             assertEq(item.timestamp, initialTimestamp);
             assertEq(item.subscriptionId, 0);
             assertEq(item.interval, 0);
@@ -385,7 +378,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         INBOX.writeViaCoordinator(containerId, node, subscriptionId, interval, input, output, proof);
 
         // Verify correct write via direct read
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, containerId, node, 0);
+        InboxItem memory item = INBOX.read(containerId, node, 0);
         assertEq(item.timestamp, timestamp);
         assertEq(item.subscriptionId, subscriptionId);
         assertEq(item.interval, interval);
@@ -394,20 +387,13 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         assertEq(item.proof, proof);
 
         // Verify correct write via consumer with inherited InboxReader
-        (
-            uint32 readTimestamp,
-            uint32 readSubscriptionId,
-            uint32 readInterval,
-            bytes memory readInput,
-            bytes memory readOutput,
-            bytes memory readProof
-        ) = SUBSCRIPTION.readMockInbox(containerId, node, 0);
-        assertEq(readTimestamp, timestamp);
-        assertEq(readSubscriptionId, subscriptionId);
-        assertEq(readInterval, interval);
-        assertEq(readInput, input);
-        assertEq(readOutput, output);
-        assertEq(readProof, proof);
+        item = SUBSCRIPTION.readMockInbox(containerId, node, 0);
+        assertEq(item.timestamp, timestamp);
+        assertEq(item.subscriptionId, subscriptionId);
+        assertEq(item.interval, interval);
+        assertEq(item.input, input);
+        assertEq(item.output, output);
+        assertEq(item.proof, proof);
     }
 
     /// @notice Correct immutable timestamp data is stored when writing data
@@ -419,7 +405,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         ALICE.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Verify correctly stored timestamp
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, timestamp);
     }
 
@@ -441,7 +427,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
 
         // Verify that inbox items are ordered serially by time
         for (uint256 i = 0; i < 10; i++) {
-            LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), i);
+            InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), i);
             assertEq(item.timestamp, castStartTimestamp + i);
         }
     }

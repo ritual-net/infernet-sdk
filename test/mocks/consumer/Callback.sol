@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {MockBaseConsumer} from "./Base.sol";
-import {LibStruct} from "../../lib/LibStruct.sol";
+import {Subscription} from "../../../src/Coordinator.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
+import {MockBaseConsumer, DeliveredOutput} from "./Base.sol";
 import {CallbackConsumer} from "../../../src/consumer/Callback.sol";
 
 /// @title MockCallbackConsumer
@@ -27,8 +27,8 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
     /// @dev Checks returned subscription ID is serially conforming
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs
     function createMockRequest(
-        string calldata containerId,
-        bytes calldata inputs,
+        string memory containerId,
+        bytes memory inputs,
         uint48 maxGasPrice,
         uint32 maxGasLimit,
         uint16 redundancy
@@ -45,7 +45,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         assertEq(expectedSubscriptionID, actualSubscriptionID);
 
         // Collect subscription from storage
-        LibStruct.Subscription memory sub = LibStruct.getSubscription(COORDINATOR, actualSubscriptionID);
+        Subscription memory sub = COORDINATOR.getSubscription(actualSubscriptionID);
 
         // Assert subscription storage
         assertEq(sub.activeAt, currentTimestamp);

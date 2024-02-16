@@ -3,9 +3,9 @@ pragma solidity ^0.8.4;
 
 import {Registry} from "./Registry.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
-import {Coordinator} from "./Coordinator.sol";
 import {EIP712} from "solady/utils/EIP712.sol";
 import {Delegator} from "./pattern/Delegator.sol";
+import {Coordinator, Subscription} from "./Coordinator.sol";
 
 /// @title EIP712Coordinator
 /// @notice Coordinator enhanced with ability to created subscriptions via off-chain EIP-712 signature

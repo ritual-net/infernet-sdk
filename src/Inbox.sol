@@ -4,31 +4,31 @@ pragma solidity ^0.8.4;
 import {Registry} from "./Registry.sol";
 import {NodeManager} from "./NodeManager.sol";
 
+/*//////////////////////////////////////////////////////////////
+                            PUBLIC STRUCTS
+//////////////////////////////////////////////////////////////*/
+
+/// @notice An inbox item contains data about a compute response
+/// @dev An inbox item must have an associated immutable `timestamp` of when it was first recorded
+/// @dev An inbox item must have a `subscriptionId` and an `interval` if it is storing the response to a `Subscription`
+/// @dev An inbox item may optionally have an `input`, `output`, and `proof` (compute response parameters)
+/// @dev Tightly-packed struct:
+///     - [timestamp, subscriptionId, interval]: [32, 32, 32] = 96
+//      - [input, output, proof] = dynamic
+struct InboxItem {
+    uint32 timestamp;
+    uint32 subscriptionId;
+    uint32 interval;
+    bytes input;
+    bytes output;
+    bytes proof;
+}
+
 /// @title Inbox
 /// @notice Optionally stores container compute responses
 /// @dev Allows `Coordinator` to store compute responses for lazy consumption
 /// @dev Allows nodes with `NodeManager.NodeStatus.Active` to store compute responses without associated `Subscription`(s)
 contract Inbox {
-    /*//////////////////////////////////////////////////////////////
-                                STRUCTS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice An inbox item contains data about a compute response
-    /// @dev An inbox item must have an associated immutable `timestamp` of when it was first recorded
-    /// @dev An inbox item must have a `subscriptionId` and an `interval` if it is storing the response to a `Subscription`
-    /// @dev An inbox item may optionally have an `input`, `output`, and `proof` (compute response parameters)
-    /// @dev Tightly-packed struct:
-    ///     - [timestamp, subscriptionId, interval]: [32, 32, 32] = 96
-    //      - [input, output, proof] = dynamic
-    struct InboxItem {
-        uint32 timestamp;
-        uint32 subscriptionId;
-        uint32 interval;
-        bytes input;
-        bytes output;
-        bytes proof;
-    }
-
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -45,6 +45,7 @@ contract Inbox {
 
     /// @notice containerId => delivering node address => array of delivered compute responses
     /// @dev Notice that validation of an `InboxItem` corresponding to a `containerId` is left to a downstream consumer
+    /// @dev Even though we have a `read` function for `items`, we keep visbility `public` because it may be useful to collect `InboxItem[]` length
     mapping(bytes32 => mapping(address => InboxItem[])) public items;
 
     /*//////////////////////////////////////////////////////////////
@@ -187,5 +188,16 @@ contract Inbox {
         bytes calldata proof
     ) external onlyCoordinator returns (uint256) {
         return _write(containerId, node, subscriptionId, interval, input, output, proof);
+    }
+
+    /// @notice Read a stored `InboxItem`
+    /// @dev By default, structs as values in public mappings return destructured parameters
+    /// @dev This function allows returning a coerced `InboxItem` type instead of destructured parameters
+    /// @param containerId compute container ID
+    /// @param node delivering node address
+    /// @param index item index
+    /// @return inbox item
+    function read(bytes32 containerId, address node, uint256 index) external view returns (InboxItem memory) {
+        return items[containerId][node][index];
     }
 }

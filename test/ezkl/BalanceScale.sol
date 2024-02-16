@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {InboxItem} from "../../src/Inbox.sol";
 import {DataAttestation} from "./DataAttestor.sol";
 import {SubscriptionConsumer} from "../../src/consumer/Subscription.sol";
 
@@ -117,9 +118,9 @@ contract BalanceScale is SubscriptionConsumer {
         bytes memory proof_ = proof;
         if (containerId != bytes32(0)) {
             // Collect input, proof
-            (,,, bytes memory lazyInput,, bytes memory lazyProof) = _readInbox(containerId, node, index);
-            input_ = lazyInput;
-            proof_ = lazyProof;
+            InboxItem memory item = INBOX.read(containerId, node, index);
+            input_ = item.input;
+            proof_ = item.proof;
         }
 
         // Verify off-chain recorded input is correct

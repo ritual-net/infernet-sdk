@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {Inbox} from "../src/Inbox.sol";
 import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
-import {LibStruct} from "./lib/LibStruct.sol";
 import {MockNode} from "./mocks/MockNode.sol";
+import {Inbox, InboxItem} from "../src/Inbox.sol";
 import {NodeManager} from "../src/NodeManager.sol";
-import {Coordinator} from "../src/Coordinator.sol";
 import {BaseConsumer} from "../src/consumer/Base.sol";
+import {DeliveredOutput} from "./mocks/consumer/Base.sol";
+import {Coordinator, Subscription} from "../src/Coordinator.sol";
 import {MockCallbackConsumer} from "./mocks/consumer/Callback.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
 
@@ -205,7 +205,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         assertEq(expected, actual);
 
         // Assert subscription data is correctly stored
-        LibStruct.Subscription memory sub = LibStruct.getSubscription(COORDINATOR, actual);
+        Subscription memory sub = COORDINATOR.getSubscription(actual);
         assertEq(sub.activeAt, 0);
         assertEq(sub.owner, address(CALLBACK));
         assertEq(sub.maxGasPrice, 1 gwei);
@@ -263,7 +263,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Assert delivery
-        LibStruct.DeliveredOutput memory out = LibStruct.getDeliveredOutput(CALLBACK, subId, 1, 1);
+        DeliveredOutput memory out = CALLBACK.getDeliveredOutput(subId, 1, 1);
         assertEq(out.subscriptionId, subId);
         assertEq(out.interval, 1);
         assertEq(out.redundancy, 1);
@@ -294,7 +294,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         // Assert delivery
         address[2] memory nodes = [address(ALICE), address(BOB)];
         for (uint16 r = 1; r <= 2; r++) {
-            LibStruct.DeliveredOutput memory out = LibStruct.getDeliveredOutput(CALLBACK, subId, 1, r);
+            DeliveredOutput memory out = CALLBACK.getDeliveredOutput(subId, 1, r);
             assertEq(out.subscriptionId, subId);
             assertEq(out.interval, 1);
             assertEq(out.redundancy, r);
@@ -387,7 +387,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
 
         // Expect revert (indexOOBError but in external contract)
         vm.expectRevert();
-        LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
     }
 }
 
@@ -796,7 +796,7 @@ contract CoordinatorEagerSubscriptionTest is CoordinatorTest {
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Verify exact rawReceiveCompute inputs
-        LibStruct.DeliveredOutput memory out = LibStruct.getDeliveredOutput(SUBSCRIPTION, subId, 1, 1);
+        DeliveredOutput memory out = SUBSCRIPTION.getDeliveredOutput(subId, 1, 1);
         assertEq(out.subscriptionId, subId);
         assertEq(out.interval, 1);
         assertEq(out.redundancy, 1);
@@ -809,7 +809,7 @@ contract CoordinatorEagerSubscriptionTest is CoordinatorTest {
 
         // Expect revert (indexOOBError but in external contract)
         vm.expectRevert();
-        LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
     }
 }
 
@@ -865,7 +865,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Verify exact rawReceiveCompute inputs
-        LibStruct.DeliveredOutput memory out = LibStruct.getDeliveredOutput(SUBSCRIPTION, subId, 1, 1);
+        DeliveredOutput memory out = SUBSCRIPTION.getDeliveredOutput(subId, 1, 1);
         assertEq(out.subscriptionId, subId);
         assertEq(out.interval, 1);
         assertEq(out.redundancy, 1);
@@ -877,7 +877,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         assertEq(out.index, 0);
 
         // Verify data is stored in inbox
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, 1 minutes);
         assertEq(item.subscriptionId, subId);
         assertEq(item.interval, 1);
@@ -917,7 +917,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         ALICE.deliverCompute(subIdLazy, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Verify eager rawReceiveCompute inputs
-        LibStruct.DeliveredOutput memory out = LibStruct.getDeliveredOutput(SUBSCRIPTION, subIdEager, 1, 1);
+        DeliveredOutput memory out = SUBSCRIPTION.getDeliveredOutput(subIdEager, 1, 1);
         assertEq(out.subscriptionId, subIdEager);
         assertEq(out.interval, 1);
         assertEq(out.redundancy, 1);
@@ -929,7 +929,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         assertEq(out.index, 0);
 
         // Veirfy lazy rawReceiveCompute inputs
-        out = LibStruct.getDeliveredOutput(SUBSCRIPTION, subIdLazy, 1, 1);
+        out = SUBSCRIPTION.getDeliveredOutput(subIdLazy, 1, 1);
         assertEq(out.subscriptionId, subIdLazy);
         assertEq(out.interval, 1);
         assertEq(out.redundancy, 1);
@@ -941,7 +941,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         assertEq(out.index, 0);
 
         // Ensure first index item in inbox is subIdLazy
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, 1 minutes);
         assertEq(item.subscriptionId, subIdLazy);
         assertEq(item.interval, 1);
@@ -976,25 +976,25 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
 
         // Verify inbox stores correct {timestamp, subscriptionId, interval}
         // Alice 0th-index (first interval response)
-        LibStruct.InboxItem memory item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
+        InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
         assertEq(item.timestamp, 1 minutes);
         assertEq(item.subscriptionId, 1);
         assertEq(item.interval, 1);
 
         // Bob 0th-index (first interval response)
-        item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(BOB), 0);
+        item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(BOB), 0);
         assertEq(item.timestamp, 1 minutes);
         assertEq(item.subscriptionId, 1);
         assertEq(item.interval, 1);
 
         // Alice 1st-index (second interval response)
-        item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(ALICE), 1);
+        item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 1);
         assertEq(item.timestamp, 2 minutes);
         assertEq(item.subscriptionId, 1);
         assertEq(item.interval, 2);
 
         // Bob 1st-index (second interval response)
-        item = LibStruct.getInboxItem(INBOX, HASHED_MOCK_CONTAINER_ID, address(BOB), 1);
+        item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(BOB), 1);
         assertEq(item.timestamp, 2 minutes);
         assertEq(item.subscriptionId, 1);
         assertEq(item.interval, 2);
