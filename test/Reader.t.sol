@@ -108,7 +108,61 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[0].lazy, actual.lazy);
     }
 
-    /// @notice TODO: Can read batch subscriptions
+    /// @notice Can read batch subscriptions
+    function testCanReadSubscriptions() public {
+        // Create normal subscriptions at ids {1, 2, 3}
+        // Create cancelled subscription at id {4}
+        // Check non-existent subscription at id {5}
+        vm.warp(0);
+
+        // Create normal subscriptions at ids {1, 2, 3, 4}
+        for (uint32 i = 0; i < 4; i++) {
+            SUBSCRIPTION.createMockSubscription(
+                MOCK_CONTAINER_ID,
+                1 gwei,
+                uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
+                i + 1, // Use frequency as verification index
+                1 minutes,
+                1,
+                false
+            );
+        }
+
+        // Cancel subscription id {4}
+        SUBSCRIPTION.cancelMockSubscription(4);
+
+        // Read subscriptions
+        Subscription[] memory read = READER.readSubscriptionBatch(1, 6);
+
+        // Assert batch length
+        assertEq(read.length, 5);
+
+        // Check normal subscriptions {1, 2, 3}
+        for (uint32 i = 0; i < 3; i++) {
+            assertEq(read[i].owner, address(SUBSCRIPTION));
+            assertEq(read[i].activeAt, 1 minutes);
+            assertEq(read[i].period, 1 minutes);
+            assertEq(read[i].frequency, i + 1); // Use as verification index
+            assertEq(read[i].redundancy, 1);
+            assertEq(read[i].maxGasPrice, 1 gwei);
+            assertEq(read[i].maxGasLimit, uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST);
+            assertEq(read[i].containerId, HASHED_MOCK_CONTAINER_ID);
+            assertEq(read[i].lazy, false);
+        }
+
+        // Check cancelled + non-existent subscription
+        for (uint256 i = 3; i < 5; i++) {
+            assertEq(read[i].owner, address(0));
+            assertEq(read[i].activeAt, 0);
+            assertEq(read[i].period, 0);
+            assertEq(read[i].frequency, 0);
+            assertEq(read[i].redundancy, 0);
+            assertEq(read[i].maxGasPrice, 0);
+            assertEq(read[i].maxGasLimit, 0);
+            assertEq(read[i].containerId, bytes32(0));
+            assertEq(read[i].lazy, false);
+        }
+    }
 
     /// @notice Can read cancelled or non-existent subscription
     function testReadCancelledOrNonExistentSubscription() public {
@@ -128,6 +182,8 @@ contract ReaderTest is Test, CoordinatorConstants {
         SUBSCRIPTION.cancelMockSubscription(subId);
 
         // Attempt to read {subId, subId + 1}
+        // subId => cancelled subscription
+        // subId + 1 => non-existent subscription
         Subscription[] memory read = READER.readSubscriptionBatch(subId, subId + 2);
 
         // Assert batch length
@@ -197,21 +253,25 @@ contract ReaderTest is Test, CoordinatorConstants {
         uint16[] memory expectedRedundancyCounts = new uint16[](4);
 
         // (id: subOne, interval: 1) == 2
+        // Tests completed interval read
         ids[0] = subOne;
         intervals[0] = 1;
         expectedRedundancyCounts[0] = 2;
 
         // (id: subOne, interval: 2) == 1
+        // Tests partial interval read
         ids[1] = subOne;
         intervals[1] = 2;
         expectedRedundancyCounts[1] = 1;
 
         // (id: subTwo, interval: 1) == 1
+        // Tests completed interval read for second subscription
         ids[2] = subTwo;
         intervals[2] = 1;
         expectedRedundancyCounts[2] = 1;
 
         // (id: subTwo, interval: 2) == 0
+        // Tests non-existent interval read via second subscription
         ids[3] = subTwo;
         intervals[3] = 2;
         expectedRedundancyCounts[3] = 0;
