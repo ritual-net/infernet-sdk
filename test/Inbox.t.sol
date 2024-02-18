@@ -51,7 +51,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox) =
+        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox,) =
             LibDeploy.deployContracts(initialNonce);
 
         // Assign to internal

@@ -109,7 +109,8 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         address inboxAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 3);
 
         // Deploy registry
-        Registry registry = new Registry(nodeManagerAddress, coordinatorAddress, inboxAddress);
+        // Initialize reader to `address(0)` given it is not used in test suite
+        Registry registry = new Registry(nodeManagerAddress, coordinatorAddress, inboxAddress, address(0));
 
         // Deploy node manager, coordinator, inbox
         NodeManager nodeManager = new NodeManager();
