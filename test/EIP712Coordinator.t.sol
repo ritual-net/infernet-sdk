@@ -136,11 +136,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @param expiry signature expiry
     /// @param sub subscription
     /// @return typed EIP-712 message hash
-    function getMessage(uint32 nonce, uint32 expiry, Subscription memory sub)
-        public
-        view
-        returns (bytes32)
-    {
+    function getMessage(uint32 nonce, uint32 expiry, Subscription memory sub) public view returns (bytes32) {
         return LibSign.getTypedMessageHash(
             COORDINATOR.EIP712_NAME(), COORDINATOR.EIP712_VERSION(), address(COORDINATOR), nonce, expiry, sub
         );
