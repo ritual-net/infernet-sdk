@@ -19,6 +19,9 @@ contract Registry {
     /// @notice Inbox address
     address public immutable INBOX;
 
+    /// @notice Reader address
+    address public immutable READER;
+
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -28,9 +31,11 @@ contract Registry {
     /// @param nodeManager NodeManager address
     /// @param coordinator Coordinator address
     /// @param inbox Inbox address
-    constructor(address nodeManager, address coordinator, address inbox) {
+    /// @param reader Reader address
+    constructor(address nodeManager, address coordinator, address inbox, address reader) {
         NODE_MANAGER = nodeManager;
         COORDINATOR = coordinator;
         INBOX = inbox;
+        READER = reader;
     }
 }
