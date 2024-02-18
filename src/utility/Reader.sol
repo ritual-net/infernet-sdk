@@ -38,7 +38,7 @@ contract Reader {
     /// @param startId start subscription ID (inclusive)
     /// @param endId end subscription ID (exclusive)
     /// @return `Subscription`(s)
-    function readSubscriptionsBatch(uint32 startId, uint32 endId) external view returns (Subscription[] memory) {
+    function readSubscriptionBatch(uint32 startId, uint32 endId) external view returns (Subscription[] memory) {
         // Setup array to populate
         uint32 length = endId - startId;
         Subscription[] memory subscriptions = new Subscription[](length);
@@ -57,6 +57,7 @@ contract Reader {
 
     /// @notice Given `Subscription` ids and intervals, collects redundancy count of (subscription, interval)-pair
     /// @dev By default, if a (subscription ID, interval)-pair does not exist, function will return `redundancyCount == 0`
+    /// @dev Does not validate `ids.length == intervals.length`
     /// @param ids array of subscription IDs
     /// @param intervals array of intervals to check where each ids[idx] corresponds to intervals[idx]
     /// @return array of redundancy counts for (subscription ID, interval)-pairs
