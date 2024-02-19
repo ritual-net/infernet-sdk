@@ -27,22 +27,22 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice EIP712Coordinator
-    EIP712Coordinator internal COORDINATOR;
+    EIP712Coordinator private COORDINATOR;
 
     /// @notice NodeManager
-    NodeManager internal NODE_MANAGER;
+    NodeManager private NODE_MANAGER;
 
     /// @notice Inbox
-    Inbox internal INBOX;
+    Inbox private INBOX;
 
     /// @notice Mock node (Alice)
-    MockNode internal ALICE;
+    MockNode private ALICE;
 
     /// @notice Mock node (Bob)
-    MockNode internal BOB;
+    MockNode private BOB;
 
     /// @notice Mock subscription consumer
-    MockSubscriptionConsumer internal SUBSCRIPTION;
+    MockSubscriptionConsumer private SUBSCRIPTION;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -51,7 +51,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox) =
+        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox,) =
             LibDeploy.deployContracts(initialNonce);
 
         // Assign to internal

@@ -22,13 +22,13 @@ contract NodeManagerTest is Test, INodeManagerEvents {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice NodeManager
-    NodeManager internal NODE_MANAGER;
+    NodeManager private NODE_MANAGER;
 
     /// @notice Mock node (Alice)
-    MockNode internal ALICE;
+    MockNode private ALICE;
 
     /// @notice Mock node (Bob)
-    MockNode internal BOB;
+    MockNode private BOB;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -38,10 +38,10 @@ contract NodeManagerTest is Test, INodeManagerEvents {
         // Initialize node manager
         NODE_MANAGER = new NodeManager();
 
-        // Initialize registry w/ node manager address + dummy {coordinator, inbox}
+        // Initialize registry w/ node manager address + dummy {coordinator, inbox, reader}
         // Deploy ordering irrelevant since NodeManager does not consume registry
         // Allows for isolated testing of just NodeManager
-        Registry registry = new Registry(address(NODE_MANAGER), address(0), address(0));
+        Registry registry = new Registry(address(NODE_MANAGER), address(0), address(0), address(0));
 
         // Initialize mock nodes
         ALICE = new MockNode(registry);

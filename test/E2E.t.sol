@@ -17,13 +17,13 @@ contract BalanceScaleTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mock node (Alice)
-    MockNode internal ALICE;
+    MockNode private ALICE;
 
     /// @notice EZKL Data Attestor
-    DataAttestation internal ATTESTOR;
+    DataAttestation private ATTESTOR;
 
     /// @notice BalanceScale demo implementation
-    BalanceScale internal BALANCE_SCALE;
+    BalanceScale private BALANCE_SCALE;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -32,7 +32,7 @@ contract BalanceScaleTest is Test {
     function setUp() public {
         // Deploy contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager,,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry, NodeManager nodeManager,,,) = LibDeploy.deployContracts(initialNonce);
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
         initialNonce = vm.getNonce(address(this));

@@ -25,45 +25,45 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Cold cost of `CallbackConsumer.rawReceiveCompute`
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
     /// @dev Overriden from CoordinatorConstants since state change order forces this to cost ~100 wei more
-    uint32 constant CALLBACK_COST = COLD_EAGER_DELIVERY_COST + 100 wei;
+    uint32 private constant CALLBACK_COST = COLD_EAGER_DELIVERY_COST + 100 wei;
 
     /// @notice Cold cost of lazy-`SubscriptionConsumer.rawReceiveCompute`
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 constant SUBSCRIPTION_COST = COLD_LAZY_DELIVERY_COST + 100 wei;
+    uint32 private constant SUBSCRIPTION_COST = COLD_LAZY_DELIVERY_COST + 100 wei;
 
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
 
     /// @notice EIP712Coordinator
-    EIP712Coordinator internal COORDINATOR;
+    EIP712Coordinator private COORDINATOR;
 
     /// @notice Inbox
-    Inbox internal INBOX;
+    Inbox private INBOX;
 
     /// @notice Mock node (Alice)
-    MockNode internal ALICE;
+    MockNode private ALICE;
 
     /// @notice Mock node (Bob)
-    MockNode internal BOB;
+    MockNode private BOB;
 
     /// @notice Mock callback consumer (w/ assigned delegatee)
-    MockDelegatorCallbackConsumer internal CALLBACK;
+    MockDelegatorCallbackConsumer private CALLBACK;
 
     /// @notice Mock subscription consumer (w/ assigned delegatee)
-    MockDelegatorSubscriptionConsumer internal SUBSCRIPTION;
+    MockDelegatorSubscriptionConsumer private SUBSCRIPTION;
 
     /// @notice Delegatee address
-    address internal DELEGATEE_ADDRESS;
+    address private DELEGATEE_ADDRESS;
 
     /// @notice Delegatee private key
-    uint256 internal DELEGATEE_PRIVATE_KEY;
+    uint256 private DELEGATEE_PRIVATE_KEY;
 
     /// @notice Backup delegatee address
-    address internal BACKUP_DELEGATEE_ADDRESS;
+    address private BACKUP_DELEGATEE_ADDRESS;
 
     /// @notice Backup delegatee private key
-    uint256 internal BACKUP_DELEGATEE_PRIVATE_KEY;
+    uint256 private BACKUP_DELEGATEE_PRIVATE_KEY;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -72,7 +72,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox) =
+        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox,) =
             LibDeploy.deployContracts(initialNonce);
 
         // Assign to internal
@@ -136,11 +136,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @param expiry signature expiry
     /// @param sub subscription
     /// @return typed EIP-712 message hash
-    function getMessage(uint32 nonce, uint32 expiry, Subscription memory sub)
-        public
-        view
-        returns (bytes32)
-    {
+    function getMessage(uint32 nonce, uint32 expiry, Subscription memory sub) public view returns (bytes32) {
         return LibSign.getTypedMessageHash(
             COORDINATOR.EIP712_NAME(), COORDINATOR.EIP712_VERSION(), address(COORDINATOR), nonce, expiry, sub
         );
