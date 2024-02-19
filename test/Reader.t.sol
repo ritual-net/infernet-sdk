@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
-import {stdError} from "forge-std/stdError.sol";
+import {stdError} from "forge-std/StdError.sol";
 import {Reader} from "../src/utility/Reader.sol";
 import {NodeManager} from "../src/NodeManager.sol";
 import {Subscription} from "../src/Coordinator.sol";
