@@ -22,19 +22,19 @@ contract ReaderTest is Test, CoordinatorConstants {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice EIP712Coordinator
-    EIP712Coordinator internal COORDINATOR;
+    EIP712Coordinator private COORDINATOR;
 
     /// @notice Reader
-    Reader internal READER;
+    Reader private READER;
 
     /// @notice Mock node (Alice)
-    MockNode internal ALICE;
+    MockNode private ALICE;
 
     /// @notice Mock node (Bob)
-    MockNode internal BOB;
+    MockNode private BOB;
 
     /// @notice Mock subscription consumer
-    MockSubscriptionConsumer internal SUBSCRIPTION;
+    MockSubscriptionConsumer private SUBSCRIPTION;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -209,6 +209,14 @@ contract ReaderTest is Test, CoordinatorConstants {
         vm.expectRevert(stdError.arithmeticError);
         // Attempt to batch read where `endId` < `startId`
         READER.readSubscriptionBatch(5, 0);
+    }
+
+    /// @notice Reading batch subscriptions where `endId` == `startId` returns no subscriptions
+    function testBatchSubscriptionsAreEmptyWhereEndAndStartIdEqual() public {
+        // Attempt to read batch where `endId` == `startId`
+        Subscription[] memory read = READER.readSubscriptionBatch(5, 5);
+        // Assert batch length is 0
+        assertEq(read.length, 0);
     }
 
     /// @notice Can read redundancy counts

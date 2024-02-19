@@ -5,7 +5,8 @@ import {Registry} from "../Registry.sol";
 import {Coordinator, Subscription} from "../Coordinator.sol";
 
 /// @title Reader
-/// @notice Utility contract: implements multi-call like batch reading functionality
+/// @notice Utility contract: implements multicall like batch reading functionality
+/// @dev Multicall src: https://github.com/mds1/multicall
 /// @dev Functions forgo validation assuming correct off-chain inputs are used
 contract Reader {
     /*//////////////////////////////////////////////////////////////
@@ -51,7 +52,6 @@ contract Reader {
             subscriptions[idx] = COORDINATOR.getSubscription(id);
         }
 
-        // Return subscriptions
         return subscriptions;
     }
 
@@ -77,7 +77,6 @@ contract Reader {
             redundancyCounts[i] = COORDINATOR.redundancyCount(key);
         }
 
-        // Return redundancy counts
         return redundancyCounts;
     }
 }
