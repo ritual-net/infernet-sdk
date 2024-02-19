@@ -29,7 +29,7 @@ abstract contract EVMConstants {
 
     /// @notice Cold SSTORE cost
     /// @dev General approximation (not accounting for warm loads/etc.)
-    uint16 constant COLD_SSTORE_COST = 20_000 wei;
+    uint16 internal constant COLD_SSTORE_COST = 20_000 wei;
 }
 
 /// @title CoordinatorConstants
@@ -40,32 +40,32 @@ abstract contract CoordinatorConstants is EVMConstants {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mock compute container ID
-    string constant MOCK_CONTAINER_ID = "container";
+    string internal constant MOCK_CONTAINER_ID = "container";
 
     /// @notice Mock compute container ID hashed
-    bytes32 constant HASHED_MOCK_CONTAINER_ID = keccak256(abi.encode(MOCK_CONTAINER_ID));
+    bytes32 internal constant HASHED_MOCK_CONTAINER_ID = keccak256(abi.encode(MOCK_CONTAINER_ID));
 
     /// @notice Mock container inputs
-    bytes constant MOCK_CONTAINER_INPUTS = "inputs";
+    bytes internal constant MOCK_CONTAINER_INPUTS = "inputs";
 
     /// @notice Mock delivered container input
     /// @dev Example of a hashed input (encoding hash(MOCK_CONTAINER_INPUTS) into input) field
-    bytes constant MOCK_INPUT = abi.encode(keccak256(abi.encode(MOCK_CONTAINER_INPUTS)));
+    bytes internal constant MOCK_INPUT = abi.encode(keccak256(abi.encode(MOCK_CONTAINER_INPUTS)));
 
     /// @notice Mock delivered container compute output
-    bytes constant MOCK_OUTPUT = "output";
+    bytes internal constant MOCK_OUTPUT = "output";
 
     /// @notice Mock delivered proof
-    bytes constant MOCK_PROOF = "proof";
+    bytes internal constant MOCK_PROOF = "proof";
 
     /// @notice Cold cost of eager {CallbackConsumer, SubscriptionConsumer}.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 constant COLD_EAGER_DELIVERY_COST = 119_700 wei;
+    uint32 internal constant COLD_EAGER_DELIVERY_COST = 119_700 wei;
 
     /// @notice Cold cost of lazy {SubscriptionConsumer}.rawReceiveCompute
     /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
     /// @dev Additional costs: 2 slot mapping + 1 slot struct packed variables (timestamp, subscriptionId, interval) + 1 slot gas overhead for dynamic types
-    uint32 constant COLD_LAZY_DELIVERY_COST =
+    uint32 internal constant COLD_LAZY_DELIVERY_COST =
         COLD_EAGER_DELIVERY_COST + (2 * COLD_SSTORE_COST) + COLD_SSTORE_COST + COLD_SSTORE_COST;
 }
 

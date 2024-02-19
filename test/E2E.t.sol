@@ -17,13 +17,13 @@ contract BalanceScaleTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Mock node (Alice)
-    MockNode internal ALICE;
+    MockNode private ALICE;
 
     /// @notice EZKL Data Attestor
-    DataAttestation internal ATTESTOR;
+    DataAttestation private ATTESTOR;
 
     /// @notice BalanceScale demo implementation
-    BalanceScale internal BALANCE_SCALE;
+    BalanceScale private BALANCE_SCALE;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP

@@ -17,19 +17,19 @@ contract RegistryTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Registry
-    Registry internal REGISTRY;
+    Registry private REGISTRY;
 
     /// @notice NodeManager
-    NodeManager internal NODE_MANAGER;
+    NodeManager private NODE_MANAGER;
 
     /// @notice Coordinator
-    EIP712Coordinator internal COORDINATOR;
+    EIP712Coordinator private COORDINATOR;
 
     /// @notice Inbox
-    Inbox internal INBOX;
+    Inbox private INBOX;
 
     /// @notice Reader
-    Reader internal READER;
+    Reader private READER;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP

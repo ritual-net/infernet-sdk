@@ -17,13 +17,13 @@ contract MockNode is StdAssertions {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Node Manager
-    NodeManager internal immutable NODE_MANAGER;
+    NodeManager private immutable NODE_MANAGER;
 
     /// @notice Coordinator
-    EIP712Coordinator internal immutable COORDINATOR;
+    EIP712Coordinator private immutable COORDINATOR;
 
     /// @notice Inbox
-    Inbox internal immutable INBOX;
+    Inbox private immutable INBOX;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR

@@ -22,13 +22,13 @@ contract NodeManagerTest is Test, INodeManagerEvents {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice NodeManager
-    NodeManager internal NODE_MANAGER;
+    NodeManager private NODE_MANAGER;
 
     /// @notice Mock node (Alice)
-    MockNode internal ALICE;
+    MockNode private ALICE;
 
     /// @notice Mock node (Bob)
-    MockNode internal BOB;
+    MockNode private BOB;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
