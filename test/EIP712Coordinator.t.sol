@@ -7,7 +7,6 @@ import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
-import {NodeManager} from "../src/NodeManager.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {Coordinator, Subscription} from "../src/Coordinator.sol";
@@ -72,8 +71,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox,) =
-            LibDeploy.deployContracts(initialNonce);
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,) = LibDeploy.deployContracts(initialNonce);
 
         // Assign to internal
         COORDINATOR = coordinator;
@@ -82,19 +80,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Initalize mock nodes
         ALICE = new MockNode(registry);
         BOB = new MockNode(registry);
-
-        // For each node
-        MockNode[2] memory nodes = [ALICE, BOB];
-        for (uint256 i = 0; i < 2; i++) {
-            // Select node
-            MockNode node = nodes[i];
-
-            // Activate nodes
-            vm.warp(0);
-            node.registerNode(address(node));
-            vm.warp(nodeManager.cooldown());
-            node.activateNode();
-        }
 
         // Create new delegatee
         DELEGATEE_PRIVATE_KEY = 0xA11CE;
@@ -537,32 +522,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Ensure subscription completion is tracked
         bytes32 key = keccak256(abi.encode(subscriptionId, deliveryInterval, address(ALICE)));
         assertEq(COORDINATOR.nodeResponded(key), true);
-    }
-
-    /// @notice Cannot delegated deliver compute response from non-active node
-    function testCannotDeliverOutputFromNonActiveNode() public {
-        // Starting nonce
-        uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
-
-        // Create new dummy subscription
-        Subscription memory sub = getMockSubscription();
-
-        // Generate signature expiry
-        uint32 expiry = uint32(block.timestamp) + 30 minutes;
-
-        // Get EIP-712 typed message
-        bytes32 message = getMessage(nonce, expiry, sub);
-
-        // Sign message from delegatee private key
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
-
-        // Create subscription and deliver response, via deliverComputeDelegatee
-        // Deliver from address(this), which is not a registered node
-        uint32 deliveryInterval = 1;
-        vm.expectRevert(Coordinator.NodeNotActive.selector);
-        COORDINATOR.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
-        );
     }
 
     /// @notice Cannot delegated deliver compute response for completed subscription

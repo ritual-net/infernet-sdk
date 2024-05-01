@@ -25,7 +25,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @notice Gas overhead in wei to retrieve cached subscriptionId for existing delegatee-created subscription
     /// @dev A uint16 is sufficient but increases control plane costs. While we can pack this and the subsequent uint24
     ///      in contract storage to save data plane costs, we prioritize control plane and instead simply use a uint256
-    uint256 public constant DELEGATEE_OVERHEAD_CACHED_WEI = 600 wei;
+    uint256 public constant DELEGATEE_OVERHEAD_CACHED_WEI = 520 wei;
 
     /// @notice Gas overhead in wei to create a new subscription via delegatee signature
     /// @dev Can fit within uint24, see comment for `DELEGATEE_OVERHEAD_CACHED_WEI` for details
@@ -215,7 +215,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
         bytes calldata input,
         bytes calldata output,
         bytes calldata proof
-    ) external onlyActiveNode {
+    ) external {
         // Create subscriptionId via delegatee creation + or collect if subscription already exists
         (uint32 subscriptionId, bool cached) = createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
 

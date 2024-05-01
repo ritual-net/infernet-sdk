@@ -7,7 +7,6 @@ import {MockNode} from "./mocks/MockNode.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
 import {stdError} from "forge-std/StdError.sol";
 import {Reader} from "../src/utility/Reader.sol";
-import {NodeManager} from "../src/NodeManager.sol";
 import {Subscription} from "../src/Coordinator.sol";
 import {CoordinatorConstants} from "./Coordinator.t.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
@@ -43,8 +42,7 @@ contract ReaderTest is Test, CoordinatorConstants {
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator,, Reader reader) =
-            LibDeploy.deployContracts(initialNonce);
+        (Registry registry, EIP712Coordinator coordinator,, Reader reader) = LibDeploy.deployContracts(initialNonce);
 
         // Assign to internal
         COORDINATOR = coordinator;
@@ -53,19 +51,6 @@ contract ReaderTest is Test, CoordinatorConstants {
         // Initialize mock nodes
         ALICE = new MockNode(registry);
         BOB = new MockNode(registry);
-
-        // For each node
-        MockNode[2] memory nodes = [ALICE, BOB];
-        for (uint256 i = 0; i < 2; i++) {
-            // Select node
-            MockNode node = nodes[i];
-
-            // Activate nodes
-            vm.warp(0);
-            node.registerNode(address(node));
-            vm.warp(nodeManager.cooldown());
-            node.activateNode();
-        }
 
         // Initialize mock subscription consumer
         SUBSCRIPTION = new MockSubscriptionConsumer(address(registry));

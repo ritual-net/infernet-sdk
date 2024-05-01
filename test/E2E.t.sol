@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
 import {MockNode} from "./mocks/MockNode.sol";
-import {NodeManager} from "../src/NodeManager.sol";
 import {BalanceScale} from "./ezkl/BalanceScale.sol";
 import {DataAttestation} from "./ezkl/DataAttestor.sol";
 
@@ -32,7 +31,7 @@ contract BalanceScaleTest is Test {
     function setUp() public {
         // Deploy contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager,,,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry,,,) = LibDeploy.deployContracts(initialNonce);
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
         initialNonce = vm.getNonce(address(this));
@@ -69,12 +68,8 @@ contract BalanceScaleTest is Test {
         // Uses compiled artifacts directly from ~ROOT/out
         address VERIFIER = deployCode("Verifier.sol:Halo2Verifier");
 
-        // Setup mock node (ALICE) and move to NodeStatus.Active
+        // Setup mock node (ALICE)
         ALICE = new MockNode(registry);
-        vm.warp(0);
-        ALICE.registerNode(address(ALICE));
-        vm.warp(nodeManager.cooldown());
-        ALICE.activateNode();
 
         // Setup balance scale contract
         BALANCE_SCALE = new BalanceScale(address(registry), address(ATTESTOR), VERIFIER);

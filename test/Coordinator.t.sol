@@ -4,10 +4,11 @@ pragma solidity ^0.8.4;
 import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
 import {MockNode} from "./mocks/MockNode.sol";
+import {LibDeploy} from "./lib/LibDeploy.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
-import {NodeManager} from "../src/NodeManager.sol";
 import {BaseConsumer} from "../src/consumer/Base.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
+import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {Coordinator, Subscription} from "../src/Coordinator.sol";
 import {MockCallbackConsumer} from "./mocks/consumer/Callback.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
@@ -102,43 +103,18 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Precompute contract addresses
-        uint256 registryDeployNonce = vm.getNonce(address(this));
-        address nodeManagerAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 1);
-        address coordinatorAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 2);
-        address inboxAddress = vm.computeCreateAddress(address(this), registryDeployNonce + 3);
+        // Initialize contracts
+        uint256 initialNonce = vm.getNonce(address(this));
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,) = LibDeploy.deployContracts(initialNonce);
 
-        // Deploy registry
-        // Initialize reader to `address(0)` given it is not used in test suite
-        Registry registry = new Registry(nodeManagerAddress, coordinatorAddress, inboxAddress, address(0));
-
-        // Deploy node manager, coordinator, inbox
-        NodeManager nodeManager = new NodeManager();
-        COORDINATOR = new Coordinator(registry);
-        INBOX = new Inbox(registry);
-
-        // Assert correct precomputed deployments
-        assertEq(registry.NODE_MANAGER(), address(nodeManager));
-        assertEq(registry.COORDINATOR(), address(COORDINATOR));
-        assertEq(registry.INBOX(), address(INBOX));
+        // Assign to internal (overriding EIP712Coordinator -> isolated Coordinator for tests)
+        COORDINATOR = Coordinator(coordinator);
+        INBOX = inbox;
 
         // Initalize mock nodes
         ALICE = new MockNode(registry);
         BOB = new MockNode(registry);
         CHARLIE = new MockNode(registry);
-
-        // For each node
-        MockNode[3] memory nodes = [ALICE, BOB, CHARLIE];
-        for (uint256 i = 0; i < 3; i++) {
-            // Select node
-            MockNode node = nodes[i];
-
-            // Activate node
-            vm.warp(0);
-            node.registerNode(address(node));
-            vm.warp(nodeManager.cooldown());
-            node.activateNode();
-        }
 
         // Initialize mock callback consumer
         CALLBACK = new MockCallbackConsumer(address(registry));
@@ -703,25 +679,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         // Attempt to deliver from Alice again
         vm.expectRevert(Coordinator.NodeRespondedAlready.selector);
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-    }
-
-    /// @notice Cannot deliver response from non-node
-    function testCannotDeliverResponseFromNonNode() public {
-        // Create new subscription at time = 0
-        vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            2, // frequency = 2
-            1 minutes,
-            2, // redundancy = 2
-            false
-        );
-
-        // Attempt to deliver from non-node
-        vm.expectRevert(Coordinator.NodeNotActive.selector);
-        COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 
     /// @notice Cannot deliver subscription with insufficient gas limit
