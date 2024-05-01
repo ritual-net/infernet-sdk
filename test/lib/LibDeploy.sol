@@ -27,7 +27,7 @@ library LibDeploy {
     /// @notice Deploys suite of contracts (Registry, EIP712Coordinator, Inbox, Reader), returning typed references
     /// @dev Precomputes deployed addresses to use in registry deployment by incrementing provided `initialNonce`
     /// @param initialNonce starting deployer nonce
-    /// @return {Registry, NodeManager, EIP712Coordinator, Inbox, Reader}-typed references
+    /// @return {Registry, EIP712Coordinator, Inbox, Reader}-typed references
     function deployContracts(uint256 initialNonce) internal returns (Registry, EIP712Coordinator, Inbox, Reader) {
         // Precompute addresses for {Coordinator, Inbox, Reader}
         address coordinatorAddress = vm.computeCreateAddress(address(this), initialNonce + 1);

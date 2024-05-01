@@ -192,7 +192,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
         return (subscriptionId, false);
     }
 
-    /// @notice Allows active nodes to (1) atomically create or collect subscription via signed EIP-712 message,
+    /// @notice Allows nodes to (1) atomically create or collect subscription via signed EIP-712 message,
     ///         (2) deliver container compute responses for created or collected subscription
     /// @param nonce subscribing contract nonce (included in signature)
     /// @param expiry delegated subscription signature expiry (included in signature)

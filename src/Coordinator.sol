@@ -400,7 +400,7 @@ contract Coordinator {
     }
 
     /// @notice Allows any address (nodes) to deliver container compute responses for a subscription
-    /// @dev Re-entering does not work because only active nodes (max 1 response) can call `deliverCompute`
+    /// @dev Re-entering does not work because each node can only call `deliverCompute` once per subscription
     /// @dev Re-entering and delivering via a seperate node `msg.sender` works but is ignored in favor of explicit `maxGasLimit`
     /// @dev For containers without succinctly-verifiable proofs, the `proof` field can be repurposed for arbitrary metadata
     /// @dev Enforces an overhead delivery cost of `DELIVERY_OVERHEAD_WEI` and `0` additional overhead

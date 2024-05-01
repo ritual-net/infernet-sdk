@@ -74,7 +74,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         bytes calldata output,
         bytes calldata proof
     ) public {
-        // Assume address cannot be an already active node (ALICE, BOB)
+        // Assume address cannot be an existing MockNode
         vm.assume(node != address(ALICE));
         vm.assume(node != address(BOB));
 
