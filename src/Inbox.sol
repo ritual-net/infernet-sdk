@@ -2,7 +2,6 @@
 pragma solidity ^0.8.4;
 
 import {Registry} from "./Registry.sol";
-import {NodeManager} from "./NodeManager.sol";
 
 /*//////////////////////////////////////////////////////////////
                             PUBLIC STRUCTS
@@ -26,15 +25,12 @@ struct InboxItem {
 
 /// @title Inbox
 /// @notice Optionally stores container compute responses
-/// @dev Allows `Coordinator` to store compute responses for lazy consumption
-/// @dev Allows nodes with `NodeManager.NodeStatus.Active` to store compute responses without associated `Subscription`(s)
+/// @dev Allows `Coordinator` to store compute responses for lazy consumption with associated `Subscription`(s)
+/// @dev Allows any address to store compute responses for lazy consumptions without associated `Subscription`(s)
 contract Inbox {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Node manager contract (handles node lifecycle)
-    NodeManager private immutable NODE_MANAGER;
 
     /// @notice Coordinator contract address
     address private immutable COORDINATOR_ADDRESS;
@@ -62,10 +58,6 @@ contract Inbox {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `write()` if delivering tx from inactive node (status != `NodeManager.NodeStatus.Active`)
-    /// @dev 4-byte signature: `0x8741cbb8`
-    error NodeNotActive();
-
     /// @notice Thrown by `writeAuthenticated()` if called from non-Coordinator address
     /// @dev 4-byte signature: `0x9ec853e6`
     error NotCoordinator();
@@ -73,14 +65,6 @@ contract Inbox {
     /*//////////////////////////////////////////////////////////////
                                MODIFIERS
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Allows only callers that are active nodes
-    modifier onlyActiveNode() {
-        if (!NODE_MANAGER.isActiveNode(msg.sender)) {
-            revert NodeNotActive();
-        }
-        _;
-    }
 
     /// @notice Allows calls from only the coordinator
     /// @dev Allows authenticating functions that store `Subscription` responses
@@ -98,8 +82,6 @@ contract Inbox {
     /// @notice Initializes new Inbox
     /// @param registry registry contract
     constructor(Registry registry) {
-        // Collect node manager contract from registry
-        NODE_MANAGER = NodeManager(registry.NODE_MANAGER());
         // Collect coordinator address from registry
         COORDINATOR_ADDRESS = registry.COORDINATOR();
     }
@@ -152,7 +134,7 @@ contract Inbox {
                                FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Allows nodes with `NodeManager.NodeStatus.Active` to optimistically deliver compute responses
+    /// @notice Allows any address to optimistically deliver compute responses
     /// @dev Zeroes out `subscriptionId` and `interval` since compute response is not associated to a subscription request
     /// @param containerId compute container ID
     /// @param input optional compute container input
@@ -161,7 +143,6 @@ contract Inbox {
     /// @return index of newly-added inbox item
     function write(bytes32 containerId, bytes calldata input, bytes calldata output, bytes calldata proof)
         external
-        onlyActiveNode
         returns (uint256)
     {
         return _write(containerId, msg.sender, 0, 0, input, output, proof);
