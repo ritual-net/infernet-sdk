@@ -5,6 +5,8 @@ pragma solidity ^0.8.4;
 /// @notice Exposes a `signer` address that allows an authorized EOA to sign off on actions on behalf of a contract
 /// @dev Allows developers to create Coordinator subscriptions off-chain, on behalf of a contract, by signing a
 ///      `DelegateSubscription` from `signer` and submitting to `EIP712Coordinator.createSubscriptionDelegatee()`
+/// @dev In theory, this could use EIP-1271 standard signature validation but that enables a contract owner to override
+///      what is a valid signature, which is more of a shotgun than just imposing a signer be specified
 abstract contract Delegator {
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
