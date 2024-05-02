@@ -6,8 +6,9 @@ import {Allowlist} from "../../../src/pattern/Allowlist.sol";
 import {MockDelegatorSubscriptionConsumer} from "./DelegatorSubscription.sol";
 
 /// @title MockAllowlistDelegatorSubscriptionConsumer
-/// @notice Inherits `MocksDelegatorSubscriptionConsumer` with additional allowlist
-contract MockAllowlistDelegatorSubscriptionConsumer is Allowlist, MockDelegatorSubscriptionConsumer {
+/// @notice Inherits `MocksDelegatorSubscriptionConsumer` with additional Allowlist
+/// @dev Does not expose `_updateAllowlist` function since it is already tested via `MockAllowlistSubscriptionConsumer`
+contract MockAllowlistDelegatorSubscriptionConsumer is MockDelegatorSubscriptionConsumer, Allowlist {
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -17,15 +18,15 @@ contract MockAllowlistDelegatorSubscriptionConsumer is Allowlist, MockDelegatorS
     /// @param signer delegated signer address
     /// @param initialAllowed array of initially-allowed node addresses
     constructor(address registry, address signer, address[] memory initialAllowed)
-        Allowlist(initialAllowed)
         MockDelegatorSubscriptionConsumer(registry, signer)
+        Allowlist(initialAllowed)
     {}
 
     /*//////////////////////////////////////////////////////////////
                            INHERITED FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Overrides function in `./Base.sol` to enforce `onlyAllowedNode` modifier is applied
+    /// @notice Overrides function in `./Base.sol` to enforce `onlyAllowedNode` modifier
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,

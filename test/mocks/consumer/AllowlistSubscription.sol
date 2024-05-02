@@ -6,8 +6,8 @@ import {MockSubscriptionConsumer} from "./Subscription.sol";
 import {Allowlist} from "../../../src/pattern/Allowlist.sol";
 
 /// @title MockAllowlistSubscriptionConsumer
-/// @notice Inherits `MockSubscriptionConsumer` with additional allowlist
-contract MockAllowlistSubscriptionConsumer is Allowlist, MockSubscriptionConsumer {
+/// @notice Inherits `MockSubscriptionConsumer` with additional Allowlist
+contract MockAllowlistSubscriptionConsumer is MockSubscriptionConsumer, Allowlist {
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -16,15 +16,15 @@ contract MockAllowlistSubscriptionConsumer is Allowlist, MockSubscriptionConsume
     /// @param registry registry address
     /// @param initialAllowed array of initially-allowed node addresses
     constructor(address registry, address[] memory initialAllowed)
-        Allowlist(initialAllowed)
         MockSubscriptionConsumer(registry)
+        Allowlist(initialAllowed)
     {}
 
     /*//////////////////////////////////////////////////////////////
                            INHERITED FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Overrides function in `./Base.sol` to enforce `onlyAllowedNode` modifier is applied
+    /// @notice Overrides function in `./Base.sol` to enforce `onlyAllowedNode` modifier
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -50,10 +50,10 @@ contract MockAllowlistSubscriptionConsumer is Allowlist, MockSubscriptionConsume
         });
     }
 
-    /// @notice Update allowlist
+    /// @notice Update Allowlist
     /// @param nodes array of node addresses to update
-    /// @param status array of status(es) to update where index corresponds to node address
-    function updateMockAllowlist(address[] memory nodes, bool[] memory status) external {
-        _updateAllowlist(nodes, status);
+    /// @param statuses array of status(es) to update where index corresponds to index in nodes array
+    function updateMockAllowlist(address[] memory nodes, bool[] memory statuses) external {
+        _updateAllowlist(nodes, statuses);
     }
 }

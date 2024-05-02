@@ -10,9 +10,9 @@ abstract contract Allowlist {
                                 MUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice node address => is allowed
-    /// @dev Only applies if `onlyAllowedNode` modifier is used
-    /// @dev Forced `private` visibility to disallow modifications outside of via `_updateAllowlist`
+    /// @notice node address => is allowed node
+    /// @dev Access list applied via `onlyAllowedNode` modifier
+    /// @dev Forced `private` visibility to disallow modifications outside of `_updateAllowlist`
     /// @dev Read getter exposed via `isAllowedNode()`
     mapping(address => bool) private allowedNodes;
 
@@ -56,13 +56,13 @@ abstract contract Allowlist {
 
     /// @notice Update `allowedNodes`
     /// @param nodes array of node addresses to update
-    /// @param status array of status(es) to update where index corresponds to node address
+    /// @param statuses array of status(es) to update where index corresponds to index in nodes array
     /// @dev Does not validate `nodes.length == status.length`
-    function _updateAllowlist(address[] memory nodes, bool[] memory status) internal {
+    function _updateAllowlist(address[] memory nodes, bool[] memory statuses) internal {
         // For each (address, status)-pair
         for (uint256 i = 0; i < nodes.length; i++) {
             // Set new status
-            allowedNodes[nodes[i]] = status[i];
+            allowedNodes[nodes[i]] = statuses[i];
         }
     }
 
@@ -70,9 +70,9 @@ abstract contract Allowlist {
                                FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Check whether a `node` is in `allowedNodes` set
+    /// @notice Check whether a `node` is allowed
     /// @param node address to check for set inclusion
-    /// @return true if node is in allowlist, else false
+    /// @return true if node is in Allowlist, else false
     function isAllowedNode(address node) external view returns (bool) {
         return allowedNodes[node];
     }

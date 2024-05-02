@@ -71,8 +71,9 @@ abstract contract CoordinatorConstants is EVMConstants {
     uint32 internal constant COLD_LAZY_DELIVERY_COST =
         COLD_EAGER_DELIVERY_COST + (2 * COLD_SSTORE_COST) + COLD_SSTORE_COST + COLD_SSTORE_COST;
 
-    /// @notice Cost of checking responding node against Allowlist
-    uint32 internal constant ALLOWLIST_COST = 35_000 wei;
+    /// @notice Additional cost to cold delivery to check responding node against Allowlist
+    /// @dev Approximately one SLOAD (2100) + some jumps (call it ~200)
+    uint32 internal constant ALLOWLIST_READ_COST = 2300 wei;
 }
 
 /// @title CoordinatorTest
@@ -103,7 +104,7 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
     /// @notice Mock subscription consumer
     MockSubscriptionConsumer internal SUBSCRIPTION;
 
-    /// @notice Mock allowlist subscription consumer
+    /// @notice Mock subscription consumer w/ Allowlist
     MockAllowlistSubscriptionConsumer internal ALLOWLIST_SUBSCRIPTION;
 
     /*//////////////////////////////////////////////////////////////
@@ -130,8 +131,8 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         // Initialize mock subscription consumer
         SUBSCRIPTION = new MockSubscriptionConsumer(address(registry));
 
-        // Initialize mock allowlist subscription consumer
-        // Add only Alice as allowed node
+        // Initialize mock subscription consumer w/ Allowlist
+        // Add only Alice as initially allowed node
         address[] memory initialAllowed = new address[](1);
         initialAllowed[0] = address(ALICE);
         ALLOWLIST_SUBSCRIPTION = new MockAllowlistSubscriptionConsumer(address(registry), initialAllowed);
@@ -988,14 +989,19 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
     }
 
     /// @notice Allowlist can be updated
-    function testFuzzAllowlistCanBeUpdated(address[] memory nodes, bool[] memory status) public {
-        // Ensure array access is congruent
-        uint256 arrayLen = nodes.length > status.length ? status.length : nodes.length;
+    function testFuzzAllowlistCanBeUpdated(address[] memory nodes, bool[] memory statuses) public {
+        // Bound array length to smallest of two fuzzed arrays
+        uint256 arrayLen = nodes.length > statuses.length ? statuses.length : nodes.length;
 
-        // Check that Alice is an allowed node
-        assertTrue(ALLOWLIST_SUBSCRIPTION.isAllowedNode(address(ALICE)));
+        // Use fuzzed length to generated bounded nodes/statuses array
+        address[] memory boundedNodes = new address[](arrayLen);
+        bool[] memory boundedStatuses = new bool[](arrayLen);
+        for (uint256 i = 0; i < arrayLen; i++) {
+            boundedNodes[i] = nodes[i];
+            boundedStatuses[i] = statuses[i];
+        }
 
-        // Unallow Alice to begin
+        // Unallow Alice to begin (default initialized)
         address[] memory removeAliceNodes = new address[](1);
         removeAliceNodes[0] = address(ALICE);
         bool[] memory removeAliceStatus = new bool[](1);
@@ -1005,27 +1011,23 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         // Ensure Alice is no longer an allowed node
         assertFalse(ALLOWLIST_SUBSCRIPTION.isAllowedNode(address(ALICE)));
 
-        // Update allowlist to fuzzed (bounded) values
-        address[] memory congruentNodes = new address[](arrayLen);
-        bool[] memory congruentStatus = new bool[](arrayLen);
-        for (uint256 i = 0; i < arrayLen; i++) {
-            congruentNodes[i] = nodes[i];
-            congruentStatus[i] = status[i];
-        }
-        ALLOWLIST_SUBSCRIPTION.updateMockAllowlist(congruentNodes, congruentStatus);
+        // Update Allowlist with bounded fuzzed arrays
+        ALLOWLIST_SUBSCRIPTION.updateMockAllowlist(boundedNodes, boundedStatuses);
 
-        // Ensure allowlist is updated against fuzzed values
+        // Ensure Allowlist is updated against fuzzed values
         for (uint256 i = 0; i < arrayLen; i++) {
             // Nested iteration since we may have duplicated status updates and want to select just the latest
-            bool lastStatus = congruentStatus[i];
+            // E.g: [addr0, addr1, addr0], [true, false, false] — addr0 is duplicated but status is just the latest applied (false)
+            bool lastStatus = boundedStatuses[i];
+            // Reverse iterate for latest occurence up to current index
             for (uint256 j = arrayLen - 1; j >= i; j--) {
-                if (congruentNodes[i] == congruentNodes[j]) {
-                    lastStatus = congruentStatus[j];
+                if (boundedNodes[i] == boundedNodes[j]) {
+                    lastStatus = boundedStatuses[j];
                     break;
                 }
             }
 
-            assertEq(ALLOWLIST_SUBSCRIPTION.isAllowedNode(congruentNodes[i]), lastStatus);
+            assertEq(ALLOWLIST_SUBSCRIPTION.isAllowedNode(boundedNodes[i]), lastStatus);
         }
     }
 
@@ -1036,14 +1038,14 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_COST,
-            3,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
+            1,
             1 minutes,
             1,
             false
         );
 
-        // Fulfill at least once from Alice
+        // Successfully fulfill from Alice
         vm.warp(1 minutes);
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
@@ -1058,14 +1060,14 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_COST,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
             1,
             1 minutes,
             1,
             false
         );
 
-        // Attempt to fulfill from a non-allowed node
+        // Attempt to fulfill from an unallowed node
         vm.warp(1 minutes);
         vm.startPrank(unallowedNode);
 
@@ -1082,7 +1084,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_COST,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
             2,
             1 minutes,
             1,
@@ -1100,15 +1102,15 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
 
     /// @notice Delivering response from an allowed node across intervals where the node is unallowed in some intervals fails
     function testCanDeliverResponseFromNodeInAllowedIntervalsOnly() public {
-        // Setup status array
-        bool[10] memory status = [false, true, false, false, true, true, true, false, false, true];
+        // Setup statuses array
+        bool[10] memory statuses = [false, true, false, false, true, true, true, false, false, true];
 
         // Create subscription w/ frequency 10
         vm.warp(0);
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
             1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_COST,
+            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
             10,
             1 minutes,
             1,
@@ -1116,14 +1118,20 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         );
 
         // Deliver response from Alice successfully or unsuccessfully depending on status in interval
+        // Setup nodes array with just Alice (to correspond with each status update at each interval)
         address[] memory nodesArr = new address[](1);
         nodesArr[0] = address(ALICE);
-        for (uint256 i = 0; i < status.length; i++) {
-            // Warp to time of submission
-            vm.warp((i + 1) * 60);
 
-            // Update allowed nodes
-            bool newAliceStatus = status[i];
+        // For each (status, interval)-pair
+        for (uint256 i = 0; i < statuses.length; i++) {
+            // Setup delivery interval
+            uint32 interval = uint32(i) + 1;
+
+            // Warp to time of submission
+            vm.warp(interval * 60);
+
+            // Update Alice status according to statuses array
+            bool newAliceStatus = statuses[i];
             bool[] memory statusArr = new bool[](1);
             statusArr[0] = newAliceStatus;
             ALLOWLIST_SUBSCRIPTION.updateMockAllowlist(nodesArr, statusArr);
@@ -1135,7 +1143,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
             if (!newAliceStatus) {
                 vm.expectRevert(Allowlist.NodeNotAllowed.selector);
             }
-            ALICE.deliverCompute(subId, uint32(i) + 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+            ALICE.deliverCompute(subId, interval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
         }
     }
 
@@ -1159,7 +1167,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
         // Ensure inbox item does not exist
-        // Array out-of-bounds access
+        // Array out-of-bounds access since atomic tx execution previously failed
         vm.expectRevert();
         INBOX.read(HASHED_MOCK_CONTAINER_ID, address(BOB), 0);
     }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {console} from "forge-std/console.sol";
 import {Inbox} from "./Inbox.sol";
 import {Registry} from "./Registry.sol";
 import {BaseConsumer} from "./consumer/Base.sol";

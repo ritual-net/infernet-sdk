@@ -111,7 +111,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     }
 
     /// @notice Overrides internal function, pushing received response to delivered outputs map
-    /// @dev Allows further overriding downstream via `virtual` operator (useful for `Allowlist` testing)
+    /// @dev Allows further overriding downstream (useful for `Allowlist` testing)
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
