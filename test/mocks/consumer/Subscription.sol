@@ -56,7 +56,9 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         uint32 exepectedSubscriptionID = COORDINATOR.id();
 
         // Create new subscription
-        uint32 actualSubscriptionID = _createComputeSubscription(containerId, frequency, period, redundancy, lazy);
+        uint32 actualSubscriptionID = _createComputeSubscription(
+            containerId, frequency, period, redundancy, lazy, address(0), 0, address(0), address(0)
+        );
 
         // Assert ID expectations
         assertEq(exepectedSubscriptionID, actualSubscriptionID);

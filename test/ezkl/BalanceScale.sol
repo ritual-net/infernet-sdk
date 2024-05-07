@@ -82,7 +82,7 @@ contract BalanceScale is SubscriptionConsumer {
     /// @param lazy whether to receive response lazily
     function initiatePrediction(int256[4] calldata input, bool lazy) external {
         // Make new subscription creation
-        uint32 id = _createComputeSubscription("BSM", 1, 0 minutes, 1, lazy);
+        uint32 id = _createComputeSubscription("BSM", 1, 0 minutes, 1, lazy, address(0), 0, address(0), address(0));
 
         // Store input data
         data[id] = input;

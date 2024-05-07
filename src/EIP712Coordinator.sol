@@ -24,7 +24,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
 
     /// @notice EIP-712 struct(Subscription) typeHash
     bytes32 private constant EIP712_SUBSCRIPTION_TYPEHASH = keccak256(
-        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy)"
+        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address prover,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /// @notice EIP-712 struct(DelegateSubscription) typeHash
@@ -32,7 +32,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @dev The `nonce` represents the nonce of the subscribing contract (sub-owner); prevents signature replay
     /// @dev The `expiry` is when the delegated subscription signature expires and can no longer be used
     bytes32 private constant EIP712_DELEGATE_SUBSCRIPTION_TYPEHASH = keccak256(
-        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy)"
+        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address prover,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -136,7 +136,11 @@ contract EIP712Coordinator is EIP712, Coordinator {
                             sub.frequency,
                             sub.redundancy,
                             sub.containerId,
-                            sub.lazy
+                            sub.lazy,
+                            sub.prover,
+                            sub.paymentAmount,
+                            sub.paymentToken,
+                            sub.wallet
                         )
                     )
                 )

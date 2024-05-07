@@ -108,7 +108,11 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
             frequency: 1,
             period: 0,
             containerId: HASHED_MOCK_CONTAINER_ID,
-            lazy: false
+            lazy: false,
+            prover: address(0),
+            paymentAmount: 0,
+            paymentToken: address(0),
+            wallet: address(0)
         });
     }
 

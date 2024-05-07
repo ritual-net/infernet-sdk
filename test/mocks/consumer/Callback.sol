@@ -36,7 +36,8 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         uint32 expectedSubscriptionID = COORDINATOR.id();
 
         // Request off-chain container compute
-        uint32 actualSubscriptionID = _requestCompute(containerId, inputs, redundancy);
+        uint32 actualSubscriptionID =
+            _requestCompute(containerId, inputs, redundancy, address(0), 0, address(0), address(0));
 
         // Assert ID expectations
         assertEq(expectedSubscriptionID, actualSubscriptionID);

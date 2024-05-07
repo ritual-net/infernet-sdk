@@ -16,7 +16,10 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 /// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
 /// @dev Tightly-packed struct:
 ///      - [owner, activeAt, period, frequency]: [160, 32 32, 32] = 256
-///      - [redundancy, containerId, lazy]: [16, 32, 8] = 56
+///      - [redundancy, containerId, lazy, prover]: [16, 32, 8, 160] = 216
+///      - [paymentAmount]: [256] = 256
+///      - [paymentToken]: [160] = 160
+///      - [wallet]: [160] = 160
 struct Subscription {
     /// @notice Subscription owner + recipient
     /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
@@ -44,6 +47,24 @@ struct Subscription {
     /// @dev When `true`, container compute outputs are stored in `Inbox` and not delivered eagerly to a consumer
     /// @dev When `false`, container compute outputs are not stored in `Inbox` and are delivered eagerly to a consumer
     bool lazy;
+    /// @notice Optional prover contract to restrict subscription payment on the basis of proof verification
+    /// @dev If `address(0)`, we assume that no proof contract is necessary, and disperse supplied payment immediately
+    /// @dev If prover contract is supplied, it must implement the `IProver` interface
+    /// @dev Eager prover contracts disperse payment immediately to relevant `Wallet`(s)
+    /// @dev Lazy prover contracts disperse payment after a delay (max. 1-week) to relevant `Wallet`(s)
+    address prover;
+    /// @notice Optional amount to pay in `paymentToken` each time a subscription is processed
+    /// @dev If `0`, subscription has no associated payment
+    /// @dev uint256 since we allow `paymentToken`(s) to have arbitrary ERC20 implementations (unknown `decimal`s)
+    /// @dev In theory, this could be a {dynamic pricing mechanism, reverse auction, etc.} but kept simple for now (abstractions can be built later)
+    uint256 paymentAmount;
+    /// @notice Optional payment token
+    /// @dev If `address(0)`, payment is in Ether (or no payment in conjunction with `paymentAmount == 0`)
+    /// @dev Else, `paymentToken` must be an ERC20-compatible token contract
+    address paymentToken;
+    /// @notice Optional `Wallet` to pay for compute payments; `owner` must be approved spender
+    /// @dev Defaults to `address(0)` when no payment specified
+    address wallet;
 }
 
 /// @title Coordinator
@@ -162,13 +183,21 @@ contract Coordinator is ReentrancyGuard {
     /// @param period period, in seconds, at which to progress each responding `interval`
     /// @param redundancy number of unique responding Infernet nodes
     /// @param lazy whether to lazily store subscription responses
+    /// @param paymentToken If providing payment for compute, payment token address (address(0) for ETH, else ERC20 contract address)
+    /// @param paymentAmount If providing payment for compute, payment in `paymentToken` per compute request fulfillment
+    /// @param wallet If providing payment for compute, Infernet `Wallet` address; `msg.sender` must be approved spender
+    /// @param prover optional prover contract to restrict payment based on response proof verification
     /// @return subscription ID
     function createSubscription(
         string memory containerId,
         uint32 frequency,
         uint32 period,
         uint16 redundancy,
-        bool lazy
+        bool lazy,
+        address paymentToken,
+        uint256 paymentAmount,
+        address wallet,
+        address prover
     ) external returns (uint32) {
         // Get subscription id and increment
         // Unlikely this will ever overflow so we can toss in unchecked
@@ -188,7 +217,11 @@ contract Coordinator is ReentrancyGuard {
             frequency: frequency,
             period: period,
             containerId: keccak256(abi.encode(containerId)),
-            lazy: lazy
+            lazy: lazy,
+            prover: prover,
+            paymentAmount: paymentAmount,
+            paymentToken: paymentToken,
+            wallet: wallet
         });
 
         // Emit new subscription
