@@ -8,6 +8,7 @@ import {MockNode} from "./mocks/MockNode.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
 import {CoordinatorConstants} from "./Coordinator.t.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
+import {Coordinated} from "../src/utility/Coordinated.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
 
@@ -288,7 +289,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
 
         // Attempt to write data to inbox as coordinator
         vm.startPrank(nonCoordinator);
-        vm.expectRevert(Inbox.NotCoordinator.selector);
+        vm.expectRevert(Coordinated.NotCoordinator.selector);
         INBOX.writeViaCoordinator(HASHED_MOCK_CONTAINER_ID, nonCoordinator, 1, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 
@@ -296,7 +297,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     function testNodeCannotCallAuthenticatedWrite() public {
         // Attempt to write data to inbox as ALICE
         vm.startPrank(address(ALICE));
-        vm.expectRevert(Inbox.NotCoordinator.selector);
+        vm.expectRevert(Coordinated.NotCoordinator.selector);
         INBOX.writeViaCoordinator(HASHED_MOCK_CONTAINER_ID, address(ALICE), 1, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 

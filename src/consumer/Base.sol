@@ -11,6 +11,7 @@ import {Coordinator} from "../Coordinator.sol";
 /// @notice Declares internal `INBOX` reference to allow downstream consumers to read from `Inbox`
 /// @dev Contains a single public entrypoint `rawReceiveCompute` callable by only the Infernet coordinator. Once
 ///      call origin is verified, parameters are proxied to internal function `_receiveCompute`
+/// @dev Does not inherit `Coordinated` for `rawReceiveCompute` coordinator-permissioned check to keep error scope localized
 abstract contract BaseConsumer {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
