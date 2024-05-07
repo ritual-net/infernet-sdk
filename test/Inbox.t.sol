@@ -172,8 +172,6 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         // Create new subscription (replicating callback because frequency = 1)
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
             1,
             1 minutes,
             1,
@@ -220,8 +218,6 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         // Create new subscription (replicating callback because frequency = 1)
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
             1,
             1 minutes,
             1,

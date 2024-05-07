@@ -45,8 +45,6 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs
     function createMockSubscription(
         string calldata containerId,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
         uint16 redundancy,
@@ -58,8 +56,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         uint32 exepectedSubscriptionID = COORDINATOR.id();
 
         // Create new subscription
-        uint32 actualSubscriptionID =
-            _createComputeSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy, lazy);
+        uint32 actualSubscriptionID = _createComputeSubscription(containerId, frequency, period, redundancy, lazy);
 
         // Assert ID expectations
         assertEq(exepectedSubscriptionID, actualSubscriptionID);
@@ -70,9 +67,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         // Assert subscription storage
         assertEq(sub.activeAt, currentTimestamp + period);
         assertEq(sub.owner, address(this));
-        assertEq(sub.maxGasPrice, maxGasPrice);
         assertEq(sub.redundancy, redundancy);
-        assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, frequency);
         assertEq(sub.period, period);
         assertEq(sub.containerId, keccak256(abi.encode(containerId)));

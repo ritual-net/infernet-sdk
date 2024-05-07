@@ -23,21 +23,9 @@ interface ICoordinatorEvents {
     event SubscriptionFulfilled(uint32 indexed id, address indexed node);
 }
 
-/// @title EVMConstants
-/// @notice General constants for EVM parameters
-abstract contract EVMConstants {
-    /*//////////////////////////////////////////////////////////////
-                               CONSTANTS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Cold SSTORE cost
-    /// @dev General approximation (not accounting for warm loads/etc.)
-    uint16 internal constant COLD_SSTORE_COST = 20_000 wei;
-}
-
 /// @title CoordinatorConstants
 /// @notice Base constants setup to inherit for Coordinator subtests
-abstract contract CoordinatorConstants is EVMConstants {
+abstract contract CoordinatorConstants {
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
@@ -60,20 +48,6 @@ abstract contract CoordinatorConstants is EVMConstants {
 
     /// @notice Mock delivered proof
     bytes internal constant MOCK_PROOF = "proof";
-
-    /// @notice Cold cost of eager {CallbackConsumer, SubscriptionConsumer}.rawReceiveCompute
-    /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 internal constant COLD_EAGER_DELIVERY_COST = 119_700 wei;
-
-    /// @notice Cold cost of lazy {SubscriptionConsumer}.rawReceiveCompute
-    /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    /// @dev Additional costs: 2 slot mapping + 1 slot struct packed variables (timestamp, subscriptionId, interval) + 1 slot gas overhead for dynamic types
-    uint32 internal constant COLD_LAZY_DELIVERY_COST =
-        COLD_EAGER_DELIVERY_COST + (2 * COLD_SSTORE_COST) + COLD_SSTORE_COST + COLD_SSTORE_COST;
-
-    /// @notice Additional cost to cold delivery to check responding node against Allowlist
-    /// @dev Approximately one SLOAD (2100) + some jumps (call it ~200)
-    uint32 internal constant ALLOWLIST_READ_COST = 2300 wei;
 }
 
 /// @title CoordinatorTest
@@ -145,13 +119,13 @@ contract CoordinatorGeneralTest is CoordinatorTest {
     /// @notice Cannot be reassigned a subscription ID
     function testCannotBeReassignedSubscriptionID() public {
         // Create new callback subscription
-        uint32 id = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
+        uint32 id = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
         assertEq(id, 1);
 
         // Create new subscriptions
-        CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
-        CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
-        CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
+        CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
+        CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
+        CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
 
         // Assert head
         assertEq(COORDINATOR.id(), 5);
@@ -165,7 +139,7 @@ contract CoordinatorGeneralTest is CoordinatorTest {
         assertEq(COORDINATOR.id(), 5);
 
         // Create new subscription
-        id = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
+        id = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
         assertEq(id, 5);
         assertEq(COORDINATOR.id(), 6);
     }
@@ -191,7 +165,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         // Create new callback
         vm.expectEmit(address(COORDINATOR));
         emit SubscriptionCreated(expected);
-        uint32 actual = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
+        uint32 actual = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
 
         // Assert subscription ID is correctly stored
         assertEq(expected, actual);
@@ -200,9 +174,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         Subscription memory sub = COORDINATOR.getSubscription(actual);
         assertEq(sub.activeAt, 0);
         assertEq(sub.owner, address(CALLBACK));
-        assertEq(sub.maxGasPrice, 1 gwei);
         assertEq(sub.redundancy, 1);
-        assertEq(sub.maxGasLimit, 100_000);
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
         assertEq(sub.containerId, HASHED_MOCK_CONTAINER_ID);
@@ -212,26 +184,13 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         assertEq(CALLBACK.getContainerInputs(actual, 0, 0, address(0)), MOCK_CONTAINER_INPUTS);
     }
 
-    /// @notice Cannot deliver callback response if maxGasPrice too low
-    function testCannotDeliverCallbackMaxGasPriceTooLow() public {
-        // Create new subscription with 1 gwei max fee
-        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
-
-        // Set tx gas price to 1gwei + 1wei
-        vm.txGasPrice(1 gwei + 1 wei);
-
-        // Attempt to deliver new subscription
-        vm.expectRevert(Coordinator.GasPriceExceeded.selector);
-        ALICE.deliverCompute(subId, 1, "", "", "");
-    }
-
     /// @notice Cannot deliver callback response if incorrect interval
     function testFuzzCannotDeliverCallbackIfIncorrectInterval(uint32 interval) public {
         // Check non-correct intervals
         vm.assume(interval != 1);
 
         // Create new callback request
-        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1 gwei, 100_000, 1);
+        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
 
         // Attempt to deliver callback request w/ incorrect interval
         vm.expectRevert(Coordinator.IntervalMismatch.selector);
@@ -241,13 +200,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
     /// @notice Can deliver callback response successfully
     function testCanDeliverCallbackResponse() public {
         // Create new callback request
-        uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID,
-            MOCK_CONTAINER_INPUTS,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            1
-        );
+        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
 
         // Deliver callback request
         vm.expectEmit(address(COORDINATOR));
@@ -271,13 +224,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
     function testCanDeliverCallbackResponseOnceAcrossTwoNodes() public {
         // Create new callback request w/ redundancy = 2
         uint16 redundancy = 2;
-        uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID,
-            MOCK_CONTAINER_INPUTS,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            redundancy
-        );
+        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, redundancy);
 
         // Deliver callback request from two nodes
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
@@ -303,13 +250,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
     function testCannotDeliverCallbackResponseFromSameNodeTwice() public {
         // Create new callback request w/ redundancy = 2
         uint16 redundancy = 2;
-        uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID,
-            MOCK_CONTAINER_INPUTS,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            redundancy
-        );
+        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, redundancy);
 
         // Deliver callback request from Alice twice
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
@@ -317,62 +258,10 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 
-    /// @notice Cannot deliver callback with insufficient gas limit
-    function testCannotDeliverCallbackWithInsufficientGasLimit() public {
-        // Create new callback request with maxGasLimit < 100 wei less than necessary
-        vm.warp(0);
-        uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID,
-            MOCK_CONTAINER_INPUTS,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST - 100,
-            1
-        );
-
-        // Ensure that fulfilling callback fails
-        vm.warp(1 minutes);
-        vm.expectRevert(abi.encodeWithSelector(Coordinator.GasLimitExceeded.selector));
-        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-    }
-
-    /// @notice Callback gas limit constant is approximately correct
-    function testCallbackGasLimitIsApproximatelyCorrect() public {
-        // Calculate approximate expected gas consumed
-        uint256 expectedGasConsumed = uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST;
-        uint256 threePercentDelta = ((expectedGasConsumed * 103) / 100) - expectedGasConsumed;
-
-        // Create new callback request with appropriate maxGasLimit
-        vm.warp(0);
-        uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID,
-            MOCK_CONTAINER_INPUTS,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            1
-        );
-
-        // Deliver callback directly as Alice and measure gas consumed
-        vm.warp(1 minutes);
-        vm.startPrank(address(ALICE));
-        uint256 startingGas = gasleft();
-        COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-        uint256 endingGas = gasleft();
-        uint256 actualGasConsumed = startingGas - endingGas;
-
-        // Ensure that gas consumed via direct delivery is ~approximately same as what we'd mathematically expect
-        assertApproxEqAbs(actualGasConsumed, expectedGasConsumed, threePercentDelta);
-    }
-
     /// @notice Delivered callbacks are not stored in Inbox
     function testCallbackDeliveryDoesNotStoreDataInInbox() public {
         // Create new callback request
-        uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID,
-            MOCK_CONTAINER_INPUTS,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            1
-        );
+        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
 
         // Deliver callback request from Alice
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
@@ -396,15 +285,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     /// @notice Can cancel a subscription
     function testCanCancelSubscription() public {
         // Create subscription
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            3,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
 
         // Cancel subscription and expect event emission
         vm.expectEmit(address(COORDINATOR));
@@ -416,15 +297,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     function testCanCancelFulfilledSubscription() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            3,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
 
         // Fulfill at least once
         vm.warp(60);
@@ -444,15 +317,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     /// @notice Cannot cancel a subscription that has already been cancelled
     function testCannotCancelCancelledSubscription() public {
         // Create and cancel subscription
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            3,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
         SUBSCRIPTION.cancelMockSubscription(subId);
 
         // Attempt to cancel subscription again
@@ -463,13 +328,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     /// @notice Cannot cancel a subscription you do not own
     function testCannotCancelUnownedSubscription() public {
         // Create callback subscription
-        uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID,
-            MOCK_CONTAINER_INPUTS,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            1
-        );
+        uint32 subId = CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1);
 
         // Attempt to cancel subscription from SUBSCRIPTION consumer
         vm.expectRevert(Coordinator.NotSubscriptionOwner.selector);
@@ -528,25 +387,15 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     function testCannotDeliverResponseNonActiveSubscription() public {
         // Create new subscription at time = 0
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            3,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
 
         // Expect subscription to be inactive till time = 60
         vm.expectRevert(Coordinator.SubscriptionNotActive.selector);
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
 
-        // Ensure subscription is active at time = 60
+        // Ensure subscription can be fulfilled when active
         // Force failure at next conditional (gas price)
-        vm.txGasPrice(1 gwei + 1 wei);
         vm.warp(1 minutes);
-        vm.expectRevert(Coordinator.GasPriceExceeded.selector);
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 
@@ -556,8 +405,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1,
@@ -589,8 +436,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1,
@@ -613,8 +458,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1,
@@ -633,8 +476,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             1,
@@ -653,8 +494,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             2, // redundancy = 2
@@ -679,8 +518,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             2, // redundancy = 2
@@ -695,69 +532,17 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         vm.expectRevert(Coordinator.NodeRespondedAlready.selector);
         ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
-
-    /// @notice Cannot deliver subscription with insufficient gas limit
-    function testCannotDeliverSubscriptionWithInsufficientGasLimit() public {
-        // Create new subscription with maxGasLimit < 100 wei less than necessary
-        vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST - 100 wei,
-            2, // frequency = 2
-            1 minutes,
-            2, // redundancy = 2
-            false
-        );
-
-        // Ensure that fulfilling subscription fails
-        vm.warp(1 minutes);
-        vm.expectRevert(abi.encodeWithSelector(Coordinator.GasLimitExceeded.selector));
-        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-    }
 }
 
 /// @title CoordinatorEagerSubscriptionTest
 /// @notice Coordinator tests specific to usage by SubscriptionConsumer w/ eager fulfillment
 contract CoordinatorEagerSubscriptionTest is CoordinatorTest {
-    /// @notice Subscription gas limit constant is approximately correct
-    function testEagerSubscriptionGasLimitIsApproximatelyCorrect() public {
-        // Calculate approximate expected gas consumed
-        uint256 expectedGasConsumed = uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST;
-        uint256 threePercentDelta = ((expectedGasConsumed * 103) / 100) - expectedGasConsumed;
-
-        // Create new subscription request with appropriate maxGasLimit
-        vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            2, // frequency = 2
-            1 minutes,
-            2, // redundancy = 2
-            false
-        );
-
-        // Deliver subscription directly as Alice and measure gas consumed
-        vm.warp(1 minutes);
-        vm.startPrank(address(ALICE));
-        uint256 startingGas = gasleft();
-        COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-        uint256 endingGas = gasleft();
-        uint256 actualGasConsumed = startingGas - endingGas;
-
-        // Ensure that gas consumed via direct delivery is ~approximately same as what we'd mathematically expect
-        assertApproxEqAbs(actualGasConsumed, expectedGasConsumed, threePercentDelta);
-    }
-
     /// @notice Eager subscription delivery does not store outputs in inbox
     function testEagerSubscriptionDeliveryDoesNotStoreOutputsInInbox() public {
         // Create new eager subscription
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
             2, // frequency = 2
             1 minutes,
             2, // redundancy = 2
@@ -789,49 +574,11 @@ contract CoordinatorEagerSubscriptionTest is CoordinatorTest {
 /// @title CoordinatorLazySubscriptionTest
 /// @notice Coordinator tests specific to usage by SubscriptionConsumer w/ lazy fulfillment
 contract CoordinatorLazySubscriptionTest is CoordinatorTest {
-    /// @notice Subscription gas limit constant is approximately correct
-    function testLazySubscriptionGasLimitIsApproximatelyCorrect() public {
-        // Calculate approximate expected gas consumed
-        uint256 expectedGasConsumed = uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST;
-        uint256 threePercentDelta = ((expectedGasConsumed * 103) / 100) - expectedGasConsumed;
-
-        // Create new subscription request with appropriate maxGasLimit
-        vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
-            2, // frequency = 2
-            1 minutes,
-            2, // redundancy = 2
-            true
-        );
-
-        // Deliver subscription directly as Alice and measure gas consumed
-        vm.warp(1 minutes);
-        vm.startPrank(address(ALICE));
-        uint256 startingGas = gasleft();
-        COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-        uint256 endingGas = gasleft();
-        uint256 actualGasConsumed = startingGas - endingGas;
-
-        // Ensure that gas consumed via direct delivery is ~approximately same as what we'd mathematically expect
-        assertApproxEqAbs(actualGasConsumed, expectedGasConsumed, threePercentDelta);
-    }
-
     /// @notice Lazy subscription delivery stores outputs in inbox
     function testLazySubscriptionDeliveryStoresOutputsInInbox() public {
         // Create new lazy subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
-            1,
-            1 minutes,
-            1,
-            true
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, true);
 
         // Deliver lazy subscription from Alice
         vm.warp(1 minutes);
@@ -863,26 +610,10 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
     function testCanDeliverLazyAndEagerSubscriptionToSameContract() public {
         // Create new eager subscription
         vm.warp(0);
-        uint32 subIdEager = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
-            1,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subIdEager = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, false);
 
         // Create new lazy subscription
-        uint32 subIdLazy = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
-            1,
-            1 minutes,
-            1,
-            true
-        );
+        uint32 subIdLazy = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, true);
 
         // Deliver lazy and eager subscriptions
         vm.warp(1 minutes);
@@ -927,15 +658,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
     function testCanDeliverLazySubscriptionsMoreThanOnce() public {
         // Create new lazy subscription w/ frequency = 2, redundancy = 2
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
-            2,
-            1 minutes,
-            2,
-            true
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 2, 1 minutes, 2, true);
 
         // Deliver first interval from {Alice, Bob}
         vm.warp(1 minutes);
@@ -1035,15 +758,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
     function testCanDeliverResponseFromAllowedNode() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
-            1,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, false);
 
         // Successfully fulfill from Alice
         vm.warp(1 minutes);
@@ -1057,15 +772,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
 
         // Create subscription
         vm.warp(0);
-        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
-            1,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, false);
 
         // Attempt to fulfill from an unallowed node
         vm.warp(1 minutes);
@@ -1081,15 +788,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
     function testCanDeliverResponseFromAllowedNodeAcrossIntervals() public {
         // Create subscription w/ frequency == 2
         vm.warp(0);
-        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
-            2,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 2, 1 minutes, 1, false);
 
         // Fulfill once from Alice
         vm.warp(1 minutes);
@@ -1107,15 +806,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
 
         // Create subscription w/ frequency 10
         vm.warp(0);
-        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST + ALLOWLIST_READ_COST,
-            10,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 10, 1 minutes, 1, false);
 
         // Deliver response from Alice successfully or unsuccessfully depending on status in interval
         // Setup nodes array with just Alice (to correspond with each status update at each interval)
@@ -1151,15 +842,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
     function testInboxIsNotUpdatedOnUnallowedNodeFailedResponseDelivery() public {
         // Create subscription (w/ lazy = true)
         vm.warp(0);
-        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            1,
-            1 minutes,
-            1,
-            true
-        );
+        uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, true);
 
         // Attempt to deliver from Bob expecting failure
         vm.warp(1 minutes);

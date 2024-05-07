@@ -64,15 +64,7 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testCanReadSingleSubscription() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            3,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
 
         // Read via `Reader` and direct via `Coordinator`
         Subscription[] memory read = READER.readSubscriptionBatch(subId, subId + 1);
@@ -87,8 +79,6 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[0].period, actual.period);
         assertEq(read[0].frequency, actual.frequency);
         assertEq(read[0].redundancy, actual.redundancy);
-        assertEq(read[0].maxGasPrice, actual.maxGasPrice);
-        assertEq(read[0].maxGasLimit, actual.maxGasLimit);
         assertEq(read[0].containerId, actual.containerId);
         assertEq(read[0].lazy, actual.lazy);
     }
@@ -104,8 +94,6 @@ contract ReaderTest is Test, CoordinatorConstants {
         for (uint32 i = 0; i < 4; i++) {
             SUBSCRIPTION.createMockSubscription(
                 MOCK_CONTAINER_ID,
-                1 gwei,
-                uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
                 i + 1, // Use frequency as verification index
                 1 minutes,
                 1,
@@ -129,8 +117,6 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[i].period, 1 minutes);
             assertEq(read[i].frequency, i + 1); // Use as verification index
             assertEq(read[i].redundancy, 1);
-            assertEq(read[i].maxGasPrice, 1 gwei);
-            assertEq(read[i].maxGasLimit, uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST);
             assertEq(read[i].containerId, HASHED_MOCK_CONTAINER_ID);
             assertEq(read[i].lazy, false);
         }
@@ -142,8 +128,6 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[i].period, 0);
             assertEq(read[i].frequency, 0);
             assertEq(read[i].redundancy, 0);
-            assertEq(read[i].maxGasPrice, 0);
-            assertEq(read[i].maxGasLimit, 0);
             assertEq(read[i].containerId, bytes32(0));
             assertEq(read[i].lazy, false);
         }
@@ -153,15 +137,7 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testReadCancelledOrNonExistentSubscription() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            3,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
 
         // Cancel subscription
         SUBSCRIPTION.cancelMockSubscription(subId);
@@ -181,8 +157,6 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[0].period, 0);
             assertEq(read[0].frequency, 0);
             assertEq(read[0].redundancy, 0);
-            assertEq(read[0].maxGasPrice, 0);
-            assertEq(read[0].maxGasLimit, 0);
             assertEq(read[0].containerId, bytes32(0));
             assertEq(read[0].lazy, false);
         }
@@ -208,26 +182,10 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testCanReadRedundancyCounts() public {
         // Create first subscription (frequency = 2, redundancy = 2)
         vm.warp(0);
-        uint32 subOne = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            2,
-            1 minutes,
-            2,
-            false
-        );
+        uint32 subOne = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 2, 1 minutes, 2, false);
 
         // Create second subscription (frequency = 1, redundancy = 1)
-        uint32 subTwo = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            1,
-            1 minutes,
-            1,
-            false
-        );
+        uint32 subTwo = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, false);
 
         // Deliver (id: subOne, interval: 1) from Alice + Bob
         // Deliver (id: subTwo, interval: 1) from Alice
@@ -279,15 +237,7 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testCanReadRedundancyCountPostSubscriptionDeletion() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_EAGER_DELIVERY_COST,
-            3,
-            1 minutes,
-            2,
-            false
-        );
+        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 2, false);
 
         // Deliver subscription
         vm.warp(1 minutes);

@@ -21,8 +21,6 @@ abstract contract SubscriptionConsumer is BaseConsumer {
 
     /// @notice Creates a recurring request for off-chain container compute via callback response
     /// @param containerId compute container identifier(s) used by off-chain Infernet node
-    /// @param maxGasPrice max gas price in wei paid by Infernet node when fulfilling callback
-    /// @param maxGasLimit max gas limit in wei paid by Infernet node in callback tx
     /// @param frequency max number of times to process subscription (i.e, `frequency == 1` is a one-time request)
     /// @param period period, in seconds, at which to progress each responding `interval`
     /// @param redundancy number of unique responding Infernet nodes
@@ -30,15 +28,12 @@ abstract contract SubscriptionConsumer is BaseConsumer {
     /// @return subscription ID of newly-created subscription
     function _createComputeSubscription(
         string memory containerId,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
         uint16 redundancy,
         bool lazy
     ) internal returns (uint32) {
-        return
-            COORDINATOR.createSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy, lazy);
+        return COORDINATOR.createSubscription(containerId, frequency, period, redundancy, lazy);
     }
 
     /// @notice Cancels a created subscription

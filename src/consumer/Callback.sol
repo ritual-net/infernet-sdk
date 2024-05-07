@@ -32,22 +32,15 @@ abstract contract CallbackConsumer is BaseConsumer {
     ///      `frequency == 1`, effectively initializing a subscription valid immediately and only for 1 interval
     /// @param containerId compute container identifier(s) used by off-chain Infernet node
     /// @param inputs optional container inputs
-    /// @param maxGasPrice max gas price in wei paid by Infernet node when fulfilling callback
-    /// @param maxGasLimit max gas limit in wei used by Infernet node in callback tx
     /// @param redundancy number of unique responding Infernet nodes
     /// @return subscription ID of newly-created one-time subscription
-    function _requestCompute(
-        string memory containerId,
-        bytes memory inputs,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
-        uint16 redundancy
-    ) internal returns (uint32) {
+    function _requestCompute(string memory containerId, bytes memory inputs, uint16 redundancy)
+        internal
+        returns (uint32)
+    {
         // Create one-time subscription at coordinator
         uint32 subscriptionId = COORDINATOR.createSubscription(
             containerId,
-            maxGasPrice,
-            maxGasLimit,
             1, // frequency == 1, one-time subscription
             0, // period == 0, available to be responded to immediately
             redundancy,

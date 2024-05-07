@@ -26,20 +26,17 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
     /// @dev Augmented with checks
     /// @dev Checks returned subscription ID is serially conforming
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs
-    function createMockRequest(
-        string memory containerId,
-        bytes memory inputs,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
-        uint16 redundancy
-    ) external returns (uint32) {
+    function createMockRequest(string memory containerId, bytes memory inputs, uint16 redundancy)
+        external
+        returns (uint32)
+    {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
         // Get expected subscription ID
         uint32 expectedSubscriptionID = COORDINATOR.id();
 
         // Request off-chain container compute
-        uint32 actualSubscriptionID = _requestCompute(containerId, inputs, maxGasPrice, maxGasLimit, redundancy);
+        uint32 actualSubscriptionID = _requestCompute(containerId, inputs, redundancy);
 
         // Assert ID expectations
         assertEq(expectedSubscriptionID, actualSubscriptionID);
@@ -50,9 +47,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         // Assert subscription storage
         assertEq(sub.activeAt, currentTimestamp);
         assertEq(sub.owner, address(this));
-        assertEq(sub.maxGasPrice, maxGasPrice);
         assertEq(sub.redundancy, redundancy);
-        assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
         assertEq(sub.containerId, keccak256(abi.encode(containerId)));

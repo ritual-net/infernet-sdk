@@ -4,6 +4,7 @@ pragma solidity ^0.8.4;
 import {Inbox} from "./Inbox.sol";
 import {Registry} from "./Registry.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
+import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 
 /*//////////////////////////////////////////////////////////////
                             PUBLIC STRUCTS
@@ -14,8 +15,8 @@ import {BaseConsumer} from "./consumer/Base.sol";
 /// @dev A subscription with `frequency == 1` is a one-time subscription (a callback)
 /// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
 /// @dev Tightly-packed struct:
-///      - [owner, activeAt, period, frequency]: [32, 160, 32, 32] = 256
-///      - [redundancy, maxGasPrice, maxGasLimit, containerId, lazy]: [16, 48, 32, 32, 8] = 136
+///      - [owner, activeAt, period, frequency]: [160, 32 32, 32] = 256
+///      - [redundancy, containerId, lazy]: [16, 32, 8] = 56
 struct Subscription {
     /// @notice Subscription owner + recipient
     /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
@@ -34,13 +35,6 @@ struct Subscription {
     /// @notice Number of unique nodes that can fulfill a subscription at each `interval`
     /// @dev uint16 allows for >255 nodes (uint8) but <65,535
     uint16 redundancy;
-    /// @notice Max gas price in wei paid by an Infernet node when fulfilling callback
-    /// @dev uint40 caps out at ~1099 gwei, uint48 allows up to ~281K gwei
-    uint48 maxGasPrice;
-    /// @notice Max gas limit in wei used by an Infernet node when fulfilling callback
-    /// @dev Must be at least equal to the gas limit of your receiving function execution + DELIVERY_OVERHEAD_WEI
-    /// @dev uint24 is too small at ~16.7M (<30M mainnet gas limit), but uint32 is more than enough (~4.2B wei)
-    uint32 maxGasLimit;
     /// @notice Container identifier used by off-chain Infernet nodes to determine which container is used to fulfill a subscription
     /// @dev Represented as fixed size hash of stringified list of containers
     /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
@@ -54,20 +48,10 @@ struct Subscription {
 
 /// @title Coordinator
 /// @notice Coordination layer between consuming smart contracts and off-chain Infernet nodes
+/// @dev Implements `ReentrancyGuard` to prevent reentrancy in `deliverCompute`
 /// @dev Allows creating and deleting `Subscription`(s)
 /// @dev Allows any address (a `node`) to deliver susbcription outputs via off-chain container compute
-contract Coordinator {
-    /*//////////////////////////////////////////////////////////////
-                               CONSTANTS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Gas overhead in wei to deliver container compute responses
-    /// @dev This is the additional cost of any validation checks performed within the `Coordinator`
-    ///      before delivering responses to consumer contracts
-    /// @dev A uint16 is sufficient but we are not packing variables so control plane cost is higher because of type
-    ///      casting during operations. Thus, we can just stick to uint256
-    uint256 public constant DELIVERY_OVERHEAD_WEI = 52_850 wei;
-
+contract Coordinator is ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -120,16 +104,6 @@ contract Coordinator {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if delivering tx with gasPrice > subscription maxGasPrice
-    /// @dev E.g. submitting tx with gas price `10 gwei` when network basefee is `11 gwei`
-    /// @dev 4-byte signature: `0x682bad5a`
-    error GasPriceExceeded();
-
-    /// @notice Thrown by `deliverComputeWithOverhead()` if delivering tx with consumed gas > subscription maxGasLimit
-    /// @dev E.g. submitting tx with gas consumed `200_000 wei` when max allowed by subscription is `175_000 wei`
-    /// @dev 4-byte signature: `0xbe9179a6`
-    error GasLimitExceeded();
-
     /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver container compute response for non-current interval
     /// @dev E.g submitting tx for `interval` < current (period elapsed) or `interval` > current (too early to submit)
     /// @dev 4-byte signature: `0x4db310c3`
@@ -172,155 +146,18 @@ contract Coordinator {
     }
 
     /*//////////////////////////////////////////////////////////////
-                           INTERNAL FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Internal counterpart to `deliverCompute()` w/ ability to set custom gas overhead allowance
-    /// @dev When called by `deliverCompute()`, `callingOverheadWei == 0` because no additional overhead imposed
-    /// @dev When called by `deliverComputeDelegatee()`, `DELEGATEE_OVERHEAD_*_WEI` is imposed
-    /// @dev When `Subscription`(s) request lazy responses, stores container output in `Inbox`
-    /// @dev When `Subscription`(s) request eager responses, delivers container output directly via `BaseConsumer.rawReceiveCompute()`
-    /// @param subscriptionId subscription ID to deliver
-    /// @param deliveryInterval subscription `interval` to deliver
-    /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
-    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional container execution proof (or arbitrary metadata)
-    /// @param callingOverheadWei additional overhead gas used for delivery
-    function _deliverComputeWithOverhead(
-        uint32 subscriptionId,
-        uint32 deliveryInterval,
-        bytes calldata input,
-        bytes calldata output,
-        bytes calldata proof,
-        uint256 callingOverheadWei
-    ) internal {
-        // In infernet-sdk v0.1.0, loading a subscription into memory was handled
-        // piece-wise in assembly because a Subscription struct contained dynamic
-        // types (forcing an explict, unbounded SLOAD cost to copy dynamic length /
-        // word size bytes).
-
-        // In infernet-sdk v0.2.0, we removed dynamic types in Subscription structs
-        // allowing us to directly copy a subscription into memory. Notice: this is
-        // still not the most optimized approach, given we pay up-front to SLOAD 2
-        // slots, rather than loading 1 slot at a time (subsidizing costs in case
-        // of failure conditions). Still, the additional gas overhead (~500 gas in most
-        // failure cases) is better than poor developer UX and worse readability.
-
-        // Collect subscription
-        Subscription memory subscription = subscriptions[subscriptionId];
-
-        // Revert if subscription does not exist
-        if (subscription.owner == address(0)) {
-            revert SubscriptionNotFound();
-        }
-
-        // Revert if subscription is not yet active
-        if (block.timestamp < subscription.activeAt) {
-            revert SubscriptionNotActive();
-        }
-
-        // Calculate subscription interval
-        uint32 interval = getSubscriptionInterval(subscription.activeAt, subscription.period);
-
-        // Revert if not processing current interval
-        if (interval != deliveryInterval) {
-            revert IntervalMismatch();
-        }
-
-        // Revert if interval > frequency
-        if (interval > subscription.frequency) {
-            revert SubscriptionCompleted();
-        }
-
-        // Revert if tx gas price > max subscription allowed
-        if (tx.gasprice > subscription.maxGasPrice) {
-            revert GasPriceExceeded();
-        }
-
-        // Revert if redundancy requirements for this interval have been met
-        bytes32 key = keccak256(abi.encode(subscriptionId, interval));
-        uint16 numRedundantDeliveries = redundancyCount[key];
-        if (numRedundantDeliveries == subscription.redundancy) {
-            revert IntervalCompleted();
-        }
-        // Highly unlikely to overflow given incrementing by 1/node
-        unchecked {
-            redundancyCount[key] = numRedundantDeliveries + 1;
-        }
-
-        // Revert if node has already responded this interval
-        key = keccak256(abi.encode(subscriptionId, interval, msg.sender));
-        if (nodeResponded[key]) {
-            revert NodeRespondedAlready();
-        }
-        nodeResponded[key] = true;
-
-        // Deliver container compute output to contract (measuring execution cost)
-        uint256 startingGas = gasleft();
-
-        // If delivering subscription lazily
-        if (subscription.lazy) {
-            // First, we must store the container outputs in `Inbox`
-            uint256 index = INBOX.writeViaCoordinator(
-                subscription.containerId, msg.sender, subscriptionId, interval, input, output, proof
-            );
-
-            // Next, we can deliver the subscription w/:
-            // 1. Nullifying container outputs (since we are storing outputs in the `Inbox`)
-            // 2. Providing a pointer to the `Inbox` entry via `containerId`, `index`
-            BaseConsumer(subscription.owner).rawReceiveCompute(
-                subscriptionId,
-                interval,
-                numRedundantDeliveries + 1,
-                msg.sender,
-                "",
-                "",
-                "",
-                subscription.containerId,
-                index
-            );
-        } else {
-            // Else, delivering subscription eagerly
-            // We must ensure `containerId`, `index` are nullified since eagerly delivering container outputs
-            BaseConsumer(subscription.owner).rawReceiveCompute(
-                subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof, bytes32(0), 0
-            );
-        }
-
-        uint256 endingGas = gasleft();
-
-        // Revert if gas used > allowed, we can make unchecked:
-        // Gas limit in most networks is usually much below uint256 max, and by this point a decent amount is spent
-        // `callingOverheadWei`, `DELIVERY_OVERHEAD_WEI` both fit in under uint24's
-        // Thus, this operation is unlikely to ever overflow ((uint256 - uint256) + (uint16 + uint24))
-        // Unless the bounds are along the lines of: {startingGas: UINT256_MAX, endingGas: << (callingOverheadWei + DELIVERY_OVERHEAD_WEI)}
-        uint256 executionCost;
-        unchecked {
-            executionCost = startingGas - endingGas + callingOverheadWei + DELIVERY_OVERHEAD_WEI;
-        }
-        if (executionCost > subscription.maxGasLimit) {
-            revert GasLimitExceeded();
-        }
-
-        // Emit successful delivery
-        emit SubscriptionFulfilled(subscriptionId, msg.sender);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                                FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Returns `Subscription` from `subscriptions` mapping, indexed by `subscriptionId`
     /// @dev Useful utility view function because by default public mappings with struct values return destructured parameters
     /// @param subscriptionId subscription ID to collect
-    function getSubscription(uint32 subscriptionId) public view returns (Subscription memory) {
+    function getSubscription(uint32 subscriptionId) external view returns (Subscription memory) {
         return subscriptions[subscriptionId];
     }
 
     /// @notice Creates new subscription
     /// @param containerId compute container identifier used by off-chain Infernet node
-    /// @param maxGasPrice max gas price in wei paid by an Infernet node when fulfilling callback
-    /// @param maxGasLimit max gas limit in wei paid by an Infernet node in callback tx
     /// @param frequency max number of times to process subscription (i.e, `frequency == 1` is a one-time request)
     /// @param period period, in seconds, at which to progress each responding `interval`
     /// @param redundancy number of unique responding Infernet nodes
@@ -328,8 +165,6 @@ contract Coordinator {
     /// @return subscription ID
     function createSubscription(
         string memory containerId,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
         uint16 redundancy,
@@ -349,9 +184,7 @@ contract Coordinator {
             // Probably reasonable to keep the overflow protection here given adding 2 uint32's into a uint32
             activeAt: uint32(block.timestamp) + period,
             owner: msg.sender,
-            maxGasPrice: maxGasPrice,
             redundancy: redundancy,
-            maxGasLimit: maxGasLimit,
             frequency: frequency,
             period: period,
             containerId: keccak256(abi.encode(containerId)),
@@ -400,22 +233,108 @@ contract Coordinator {
     }
 
     /// @notice Allows any address (nodes) to deliver container compute responses for a subscription
-    /// @dev Re-entering does not work because each node can only call `deliverCompute` once per subscription
-    /// @dev Re-entering and delivering via a seperate node `msg.sender` works but is ignored in favor of explicit `maxGasLimit`
-    /// @dev For containers without succinctly-verifiable proofs, the `proof` field can be repurposed for arbitrary metadata
-    /// @dev Enforces an overhead delivery cost of `DELIVERY_OVERHEAD_WEI` and `0` additional overhead
+    /// @dev Re-entering generally does not work because each node can only call `deliverCompute` once per subscription
+    /// @dev But, you can call `deliverCompute` with a seperate `msg.sender` (in same delivery call) so we optimistically restrict with `nonReentrant`
+    /// @dev When `Subscription`(s) request lazy responses, stores container output in `Inbox`
+    /// @dev When `Subscription`(s) request eager responses, delivers container output directly via `BaseConsumer.rawReceiveCompute()`
     /// @param subscriptionId subscription ID to deliver
     /// @param deliveryInterval subscription `interval` to deliver
-    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both)
+    /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional off-chain container execution proof (or arbitrary metadata)
+    /// @param proof optional container execution proof (or arbitrary metadata)
     function deliverCompute(
         uint32 subscriptionId,
         uint32 deliveryInterval,
         bytes calldata input,
         bytes calldata output,
         bytes calldata proof
-    ) external {
-        _deliverComputeWithOverhead(subscriptionId, deliveryInterval, input, output, proof, 0);
+    ) public nonReentrant {
+        // In infernet-sdk v0.1.0, loading a subscription into memory was handled
+        // piece-wise in assembly because a Subscription struct contained dynamic
+        // types (forcing an explict, unbounded SLOAD cost to copy dynamic length /
+        // word size bytes).
+
+        // In infernet-sdk v0.2.0, we removed dynamic types in Subscription structs
+        // allowing us to directly copy a subscription into memory. Notice: this is
+        // still not the most optimized approach, given we pay up-front to SLOAD 2
+        // slots, rather than loading 1 slot at a time (subsidizing costs in case
+        // of failure conditions). Still, the additional gas overhead (~500 gas in most
+        // failure cases) is better than poor developer UX and worse readability.
+
+        // Collect subscription
+        Subscription memory subscription = subscriptions[subscriptionId];
+
+        // Revert if subscription does not exist
+        if (subscription.owner == address(0)) {
+            revert SubscriptionNotFound();
+        }
+
+        // Revert if subscription is not yet active
+        if (block.timestamp < subscription.activeAt) {
+            revert SubscriptionNotActive();
+        }
+
+        // Calculate subscription interval
+        uint32 interval = getSubscriptionInterval(subscription.activeAt, subscription.period);
+
+        // Revert if not processing current interval
+        if (interval != deliveryInterval) {
+            revert IntervalMismatch();
+        }
+
+        // Revert if interval > frequency
+        if (interval > subscription.frequency) {
+            revert SubscriptionCompleted();
+        }
+
+        // Revert if redundancy requirements for this interval have been met
+        bytes32 key = keccak256(abi.encode(subscriptionId, interval));
+        uint16 numRedundantDeliveries = redundancyCount[key];
+        if (numRedundantDeliveries == subscription.redundancy) {
+            revert IntervalCompleted();
+        }
+        // Highly unlikely to overflow given incrementing by 1/node
+        unchecked {
+            redundancyCount[key] = numRedundantDeliveries + 1;
+        }
+
+        // Revert if node has already responded this interval
+        key = keccak256(abi.encode(subscriptionId, interval, msg.sender));
+        if (nodeResponded[key]) {
+            revert NodeRespondedAlready();
+        }
+        nodeResponded[key] = true;
+
+        // If delivering subscription lazily
+        if (subscription.lazy) {
+            // First, we must store the container outputs in `Inbox`
+            uint256 index = INBOX.writeViaCoordinator(
+                subscription.containerId, msg.sender, subscriptionId, interval, input, output, proof
+            );
+
+            // Next, we can deliver the subscription w/:
+            // 1. Nullifying container outputs (since we are storing outputs in the `Inbox`)
+            // 2. Providing a pointer to the `Inbox` entry via `containerId`, `index`
+            BaseConsumer(subscription.owner).rawReceiveCompute(
+                subscriptionId,
+                interval,
+                numRedundantDeliveries + 1,
+                msg.sender,
+                "",
+                "",
+                "",
+                subscription.containerId,
+                index
+            );
+        } else {
+            // Else, delivering subscription eagerly
+            // We must ensure `containerId`, `index` are nullified since eagerly delivering container outputs
+            BaseConsumer(subscription.owner).rawReceiveCompute(
+                subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof, bytes32(0), 0
+            );
+        }
+
+        // Emit successful delivery
+        emit SubscriptionFulfilled(subscriptionId, msg.sender);
     }
 }
