@@ -55,6 +55,7 @@ Ordering of sections in contract goes:
 13. Constructor
 14. Internal functions
 15. External functions
+16. Fallback function
 
 Sections are delineated using headers generated from [transmissions11/headers](https://github.com/transmissions11/headers).
 
