@@ -43,7 +43,7 @@ contract Fee is Ownable {
     /// @notice Returns fee recipient (`owner`) address
     /// @dev Acts simply as a proxy to the existing `owner()` fn to be more verbose
     /// @return fee recipient address
-    function FEE_RECIPIENT() public view returns (address) {
+    function FEE_RECIPIENT() external view returns (address) {
         return owner();
     }
 }
