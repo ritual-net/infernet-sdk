@@ -7,7 +7,7 @@ import {Ownable} from "solady/auth/Ownable.sol";
 import {Coordinated} from "../utility/Coordinated.sol";
 
 /// @title Wallet
-/// @notice Payments wallet that allows: (1) managing ETH & ERC20 token balances
+/// @notice Payments wallet that allows: (1) managing ETH & ERC20 token balances, (2) allowing consumers to spend balance, (3) allowing coordinator to manage balance
 /// @dev Implements `Ownable` to setup an update-able `Wallet` `owner`
 /// @dev Implements `Coordinated` to restrict payment-handling functions to being called from coordinator
 contract Wallet is Ownable, Coordinated {
