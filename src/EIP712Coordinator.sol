@@ -196,6 +196,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
     /// @param proof optional container execution proof (or arbitrary metadata)
+    /// @param nodeWallet node wallet (used to receive payments, and put up escrow/slashing funds); msg.sender must be authorized spender of wallet
     function deliverComputeDelegatee(
         uint32 nonce,
         uint32 expiry,
@@ -207,7 +208,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
         bytes calldata input,
         bytes calldata output,
         bytes calldata proof,
-        address payable nodeWallet
+        address nodeWallet
     ) external {
         // Create subscriptionId via delegatee creation + or collect if subscription already exists
         uint32 subscriptionId = createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);

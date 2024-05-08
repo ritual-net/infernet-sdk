@@ -7,6 +7,7 @@ import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
+import {MockProtocol} from "./mocks/MockProtocol.sol";
 import {Allowlist} from "../src/pattern/Allowlist.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
@@ -22,6 +23,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Mock protocol wallet
+    MockProtocol internal PROTOCOL;
 
     /// @notice EIP712Coordinator
     EIP712Coordinator private COORDINATOR;
@@ -61,10 +65,16 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Initialize contracts
+        // Create mock protocol wallet
         uint256 initialNonce = vm.getNonce(address(this));
+        address mockProtocolWalletAddress = vm.computeCreateAddress(address(this), initialNonce + 6);
+
+        // Initialize contracts
         (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,,) =
-            LibDeploy.deployContracts(initialNonce, address(0), 0);
+            LibDeploy.deployContracts(initialNonce, mockProtocolWalletAddress, MOCK_PROTOCOL_FEE);
+
+        // Initialize mock protocol wallet
+        PROTOCOL = new MockProtocol(registry);
 
         // Assign to internal
         COORDINATOR = coordinator;
@@ -110,10 +120,10 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
             period: 0,
             containerId: HASHED_MOCK_CONTAINER_ID,
             lazy: false,
-            prover: payable(address(0)),
+            prover: payable(NO_PROVER),
             paymentAmount: 0,
-            paymentToken: payable(address(0)),
-            wallet: payable(address(0))
+            paymentToken: NO_PAYMENT_TOKEN,
+            wallet: payable(NO_WALLET)
         });
     }
 
@@ -162,6 +172,11 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
+        assertEq(sub.lazy, actual.lazy);
+        assertEq(sub.prover, actual.prover);
+        assertEq(sub.paymentToken, actual.paymentToken);
+        assertEq(sub.paymentAmount, actual.paymentAmount);
+        assertEq(sub.wallet, actual.wallet);
 
         // Assert state is correctly updated
         if (nonce > maxSubscriberNonce) {
@@ -252,6 +267,11 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
+        assertEq(sub.lazy, actual.lazy);
+        assertEq(sub.prover, actual.prover);
+        assertEq(sub.paymentToken, actual.paymentToken);
+        assertEq(sub.paymentAmount, actual.paymentAmount);
+        assertEq(sub.wallet, actual.wallet);
 
         // Assert state is correctly updated
         assertEq(COORDINATOR.maxSubscriberNonce(address(CALLBACK)), 0);
@@ -451,7 +471,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Get response
@@ -493,7 +513,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Get response
@@ -542,16 +562,18 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Attempt to deliver from Bob via delegatee
         vm.expectRevert(Coordinator.IntervalCompleted.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
+        );
 
         // Attempt to delivery from Bob direct
         vm.expectRevert(Coordinator.IntervalCompleted.selector);
-        BOB.deliverCompute(subscriptionId, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverCompute(subscriptionId, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
     }
 
     /// @notice Can delegated deliver compute response for existing subscription
@@ -577,7 +599,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Ensure subscription completion is tracked
@@ -585,7 +607,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(COORDINATOR.nodeResponded(key), true);
 
         // Deliver from Bob
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
+        );
 
         // Ensure subscription completion is tracked
         key = keccak256(abi.encode(subscriptionId, deliveryInterval, address(BOB)));
@@ -593,7 +617,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Expect revert if trying to deliver again
         vm.expectRevert(Coordinator.IntervalCompleted.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
+        );
     }
 
     /// @notice Can deliver delegated subscription response as an allowed node
@@ -616,11 +642,11 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription and deliver response, via deliverComputeDelegatee (via allowed node Alice)
-        ALICE.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Attempt but fail to deliver response from Bob (unallowed node)
         vm.expectRevert(Allowlist.NodeNotAllowed.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
     }
 
     /// @notice Creating new subscription as unallowed node fails upon delivering response
@@ -644,7 +670,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Create subscription and deliver response via Bob
         // Expect failure given unallowed node causes atomic tx reversion
         vm.expectRevert(Allowlist.NodeNotAllowed.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Ensure subscription was not created (no serial nonce increment from subscription creation)
         uint32 finalNonce = COORDINATOR.maxSubscriberNonce(address(ALLOWLIST_SUBSCRIPTION));

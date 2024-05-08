@@ -65,7 +65,9 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testCanReadSingleSubscription() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
+        uint32 subId = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, address(1), 123, address(2), address(3)
+        );
 
         // Read via `Reader` and direct via `Coordinator`
         Subscription[] memory read = READER.readSubscriptionBatch(subId, subId + 1);
@@ -82,6 +84,10 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[0].redundancy, actual.redundancy);
         assertEq(read[0].containerId, actual.containerId);
         assertEq(read[0].lazy, actual.lazy);
+        assertEq(read[0].paymentToken, actual.paymentToken);
+        assertEq(read[0].paymentAmount, actual.paymentAmount);
+        assertEq(read[0].wallet, actual.wallet);
+        assertEq(read[0].prover, actual.prover);
     }
 
     /// @notice Can read batch subscriptions
@@ -98,7 +104,11 @@ contract ReaderTest is Test, CoordinatorConstants {
                 i + 1, // Use frequency as verification index
                 1 minutes,
                 1,
-                false
+                false,
+                address(uint160(i + 1)),
+                i + 1,
+                address(uint160(i + 1)),
+                address(uint160(i + 1))
             );
         }
 
@@ -120,6 +130,10 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[i].redundancy, 1);
             assertEq(read[i].containerId, HASHED_MOCK_CONTAINER_ID);
             assertEq(read[i].lazy, false);
+            assertEq(read[i].paymentToken, address(uint160(i + 1)));
+            assertEq(read[i].paymentAmount, i + 1);
+            assertEq(read[i].wallet, address(uint160(i + 1)));
+            assertEq(read[i].prover, address(uint160(i + 1)));
         }
 
         // Check cancelled + non-existent subscription
@@ -131,6 +145,10 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[i].redundancy, 0);
             assertEq(read[i].containerId, bytes32(0));
             assertEq(read[i].lazy, false);
+            assertEq(read[i].paymentToken, address(0));
+            assertEq(read[i].paymentAmount, 0);
+            assertEq(read[i].wallet, address(0));
+            assertEq(read[i].prover, address(0));
         }
     }
 
@@ -138,7 +156,9 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testReadCancelledOrNonExistentSubscription() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 1, false);
+        uint32 subId = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, address(1), 123, address(2), address(3)
+        );
 
         // Cancel subscription
         SUBSCRIPTION.cancelMockSubscription(subId);
@@ -160,6 +180,10 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[0].redundancy, 0);
             assertEq(read[0].containerId, bytes32(0));
             assertEq(read[0].lazy, false);
+            assertEq(read[0].paymentToken, address(0));
+            assertEq(read[0].paymentAmount, 0);
+            assertEq(read[0].wallet, address(0));
+            assertEq(read[0].prover, address(0));
         }
     }
 
@@ -183,21 +207,25 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testCanReadRedundancyCounts() public {
         // Create first subscription (frequency = 2, redundancy = 2)
         vm.warp(0);
-        uint32 subOne = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 2, 1 minutes, 2, false);
+        uint32 subOne = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID, 2, 1 minutes, 2, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+        );
 
         // Create second subscription (frequency = 1, redundancy = 1)
-        uint32 subTwo = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 1, 1 minutes, 1, false);
+        uint32 subTwo = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+        );
 
         // Deliver (id: subOne, interval: 1) from Alice + Bob
         // Deliver (id: subTwo, interval: 1) from Alice
         vm.warp(1 minutes);
-        ALICE.deliverCompute(subOne, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-        BOB.deliverCompute(subOne, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-        ALICE.deliverCompute(subTwo, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverCompute(subOne, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
+        BOB.deliverCompute(subOne, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
+        ALICE.deliverCompute(subTwo, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Deliver (id: subOne, interval: 2) from Alice
         vm.warp(2 minutes);
-        ALICE.deliverCompute(subOne, 2, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverCompute(subOne, 2, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Assert correct batch reads
         uint32[] memory ids = new uint32[](4);
@@ -238,12 +266,14 @@ contract ReaderTest is Test, CoordinatorConstants {
     function testCanReadRedundancyCountPostSubscriptionDeletion() public {
         // Create subscription
         vm.warp(0);
-        uint32 subId = SUBSCRIPTION.createMockSubscription(MOCK_CONTAINER_ID, 3, 1 minutes, 2, false);
+        uint32 subId = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID, 3, 1 minutes, 2, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+        );
 
         // Deliver subscription
         vm.warp(1 minutes);
         uint32 interval = 1;
-        ALICE.deliverCompute(subId, interval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverCompute(subId, interval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Cancel partially fulfilled subscription
         SUBSCRIPTION.cancelMockSubscription(subId);

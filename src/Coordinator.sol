@@ -360,7 +360,7 @@ contract Coordinator is ReentrancyGuard {
         bytes calldata input,
         bytes calldata output,
         bytes calldata proof,
-        address payable nodeWallet
+        address nodeWallet
     ) public nonReentrant {
         // In infernet-sdk v0.1.0, loading a subscription into memory was handled
         // piece-wise in assembly because a Subscription struct contained dynamic
@@ -478,7 +478,7 @@ contract Coordinator is ReentrancyGuard {
                 );
 
                 // Setup node wallet
-                Wallet node = Wallet(nodeWallet);
+                Wallet node = Wallet(payable(nodeWallet));
 
                 // Escrow slashable amount from node
                 node.cLock(msg.sender, subscription.paymentToken, subscription.paymentAmount);

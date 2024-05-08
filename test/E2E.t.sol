@@ -112,7 +112,9 @@ contract BalanceScaleTest is Test {
         bytes memory input = abi.encode(hashedInput);
 
         // Submit compute container response from Alice w/ correct proof
-        ALICE.deliverCompute(subscriptionId, 1, input, "really,any,response,here,we,read,true,output,from,proof", proof);
+        ALICE.deliverCompute(
+            subscriptionId, 1, input, "really,any,response,here,we,read,true,output,from,proof", proof, address(0)
+        );
 
         // Assert actual output conforms to expected output
         int256 actualOutput = BALANCE_SCALE.predictions(subscriptionId);

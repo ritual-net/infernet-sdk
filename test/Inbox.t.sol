@@ -176,14 +176,18 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             1,
             1 minutes,
             1,
-            true // lazy
+            true, // lazy
+            NO_PAYMENT_TOKEN,
+            0,
+            NO_WALLET,
+            NO_PROVER
         );
 
         // Deliver subscription from ALICE
         vm.warp(1 minutes);
         vm.expectEmit(address(INBOX));
         emit NewInboxItem(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
-        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Verify output is lazily delivered to subscriber
         DeliveredOutput memory out = SUBSCRIPTION.getDeliveredOutput(subId, 1, 1);
@@ -222,12 +226,16 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             1,
             1 minutes,
             1,
-            true // lazy
+            true, // lazy
+            NO_PAYMENT_TOKEN,
+            0,
+            NO_WALLET,
+            NO_PROVER
         );
 
         // Deliver subscription from ALICE
         vm.warp(1 minutes);
-        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Verify written data from direct write
         InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
