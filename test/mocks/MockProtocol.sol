@@ -30,31 +30,6 @@ contract MockProtocol {
                            INHERITED FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev Wrapper function (calling Ownable.transferOwnership)
-    function transferOwnership(address newOwner) external {
-        FEE.transferOwnership(newOwner);
-    }
-
-    /// @dev Wrapper function (calling Ownable.renounceOwnership)
-    function renounceOwnership() external {
-        FEE.renounceOwnership();
-    }
-
-    /// @dev Wrapper function (calling Ownable.requestOwnershipHandover)
-    function requestOwnershipHandover() external {
-        FEE.requestOwnershipHandover();
-    }
-
-    /// @dev Wrapper function (calling Ownable.cancelOwnershipHandover)
-    function cancelOwnershipHandover() external {
-        FEE.cancelOwnershipHandover();
-    }
-
-    /// @dev Wrapper function (calling Ownable.completeOwnershipHandover)
-    function completeOwnershipHandover(address pendingOwner) external {
-        FEE.completeOwnershipHandover(pendingOwner);
-    }
-
     /// @dev Wrapper function (calling Ownable.updateFee)
     function updateFee(uint16 newFee) external {
         FEE.updateFee(newFee);
