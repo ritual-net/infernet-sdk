@@ -10,6 +10,9 @@ import {Coordinated} from "../utility/Coordinated.sol";
 /// @notice Payments wallet that allows: (1) managing ETH & ERC20 token balances, (2) allowing consumers to spend balance, (3) allowing coordinator to manage balance
 /// @dev Implements `Ownable` to setup an update-able `Wallet` `owner`
 /// @dev Implements `Coordinated` to restrict payment-handling functions to being called from coordinator
+/// @dev It is known that a frontrunning exploit exists (similar to the `approve` ERC20 vulnerability), where a consumer can request compute, and frontrun with a withdraw before the compute
+///      is delivered forcing unpaid compute execution (for results that can be copied and used). Solving for this vulnerability (for example, with Chainlink subscriptions' always-preserved balances) is
+///      is ignored, instead delegating to (1) reputation systems at the node-level for ease-of-use.
 contract Wallet is Ownable, Coordinated {
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
