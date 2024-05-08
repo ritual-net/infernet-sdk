@@ -17,8 +17,8 @@ contract CoordinatedTest is Test {
     /// @notice Coordinator can call permissioned function
     function testFuzzCoordinatorCanCallPermissionedFunction(address coordinator) public {
         // Deploy new registry w/ specified coordinator address
-        // Inbox and reader addresses irrelevant so zeroed out
-        Registry registry = new Registry(coordinator, address(0), address(0));
+        // Inbox, reader, fee, wallet factory addresses irrelevant so zeroed out
+        Registry registry = new Registry(coordinator, address(0), address(0), address(0), address(0));
 
         // Verify that coordinator address is correctly set in registry
         assertEq(coordinator, registry.COORDINATOR());
@@ -35,7 +35,7 @@ contract CoordinatedTest is Test {
     function testFuzzNonCoordinatorCannotCallPermissionedFunction(address nonCoordinator) public {
         // Initialize contracts via LibDeploy
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry,,,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry,,,,,) = LibDeploy.deployContracts(initialNonce, address(0), 0);
 
         // Enforce that nonCoordinator address != deployed coordinator address
         vm.assume(nonCoordinator != registry.COORDINATOR());

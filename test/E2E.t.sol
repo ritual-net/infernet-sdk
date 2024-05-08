@@ -31,7 +31,7 @@ contract BalanceScaleTest is Test {
     function setUp() public {
         // Deploy contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry,,,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry,,,,,) = LibDeploy.deployContracts(initialNonce, address(0), 0);
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
         initialNonce = vm.getNonce(address(this));

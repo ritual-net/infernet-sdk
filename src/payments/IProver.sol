@@ -5,6 +5,7 @@ pragma solidity ^0.8.4;
 /// @notice Basic interface for prover contracts to: (1) expose proving fees and `Wallet` address, (2) expose function to begin proof validation journey
 interface IProver {
     /// @notice Gets prover contract's associated `Wallet` address
+    /// @dev Does not necessarily have to conform to the exact `Wallet` spec. since this address does not need to authorize the coordinator for spend
     /// @return `Wallet` address to receive proof payment
     function getWallet() external view returns (address);
 
@@ -23,4 +24,8 @@ interface IProver {
     /// @dev By this point, prover contract has been paid for proof validation
     function requestProofValidation(uint32 subscriptionId, uint32 interval, address node, bytes calldata proof)
         external;
+
+    /// @notice Enforce ETH deposits to `IProver`-implementing contract
+    /// @dev A prover may still choose to not support ETH by returning `false` for `isSupportedToken(address(0))`
+    receive() external payable;
 }

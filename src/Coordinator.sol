@@ -2,8 +2,12 @@
 pragma solidity ^0.8.4;
 
 import {Inbox} from "./Inbox.sol";
+import {Fee} from "./payments/Fee.sol";
 import {Registry} from "./Registry.sol";
+import {Wallet} from "./payments/Wallet.sol";
+import {IProver} from "./payments/IProver.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
+import {WalletFactory} from "./payments/WalletFactory.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 
 /*//////////////////////////////////////////////////////////////
@@ -52,7 +56,8 @@ struct Subscription {
     /// @dev If prover contract is supplied, it must implement the `IProver` interface
     /// @dev Eager prover contracts disperse payment immediately to relevant `Wallet`(s)
     /// @dev Lazy prover contracts disperse payment after a delay (max. 1-week) to relevant `Wallet`(s)
-    address prover;
+    /// @dev Notice that consumer contracts can still independently implement their own 0-cost proof verification within their contracts
+    address payable prover;
     /// @notice Optional amount to pay in `paymentToken` each time a subscription is processed
     /// @dev If `0`, subscription has no associated payment
     /// @dev uint256 since we allow `paymentToken`(s) to have arbitrary ERC20 implementations (unknown `decimal`s)
@@ -64,7 +69,30 @@ struct Subscription {
     address paymentToken;
     /// @notice Optional `Wallet` to pay for compute payments; `owner` must be approved spender
     /// @dev Defaults to `address(0)` when no payment specified
-    address wallet;
+    address payable wallet;
+}
+
+/// @notice A ProofRequest is a request made to a prover contract to validate some proof bytes
+struct ProofRequest {
+    /// @notice Proof request expiration
+    /// @dev Set to block.timestamp (time of proof request initiation) + 1 week window
+    uint32 expiry;
+    /// @notice Prover contract
+    /// @dev While this is available via the `Subscription` struct (`prover`) we cannot rely on it in case a malicious consumer cancels their subscription
+    address prover;
+    /// @notice Payment token
+    /// @dev While this is available via the `Subscription` struct (`paymentToken`) we cannot rely on it in case a malicious consumer cancels their subscription
+    address paymentToken;
+    /// @notice Address of node `Wallet` which has escrowed `paymentAmount` `paymentToken`
+    Wallet nodeWallet;
+    /// @notice Amount of `paymentToken` escrowed by the node `Wallet` as slashable payment to `consumerWallet`
+    /// @dev While this is available via the `Subscription` struct (`paymentAmount`) we cannot rely on it in case a malicious consumer cancels their subscription
+    uint256 nodeEscrowed;
+    /// @notice Address of consumer `Wallet` which has escrowed `consumerEscrowed` `paymentToken`
+    /// @dev While this is available via the `Subscription` struct we cannot rely on it in case a malicious consumer cancels their subscription
+    Wallet consumerWallet;
+    /// @notice Amount of `paymentToken` escrowed by the consumer as successful payment to `nodeWallet`
+    uint256 consumerEscrowed;
 }
 
 /// @title Coordinator
@@ -77,8 +105,14 @@ contract Coordinator is ReentrancyGuard {
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Fee registry contract (used to collect protocol fee)
+    Fee private immutable FEE;
+
     /// @notice Inbox contract (handles lazily storing subscription responses)
     Inbox private immutable INBOX;
+
+    /// @notice Wallet factory contract (handles validity verification of `Wallet` contracts)
+    WalletFactory private immutable WALLET_FACTORY;
 
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
@@ -98,6 +132,9 @@ contract Coordinator is ReentrancyGuard {
     ///      struct that represents 32 bits of the interval -> 16 bits of redundancy count, reset each interval change
     ///      But, this is a little over the optimization:readability line and would make Subscriptions harder to grok
     mapping(bytes32 => uint16) public redundancyCount;
+
+    /// @notice hash(subscriptionId, interval, caller) => proof request
+    mapping(bytes32 => ProofRequest) public proofRequests;
 
     /// @notice subscriptionID => Subscription
     /// @dev 1-indexed, 0th-subscription is empty
@@ -125,35 +162,60 @@ contract Coordinator is ReentrancyGuard {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver container compute response for non-current interval
+    /// @notice Thrown by `deliverCompute()` if attempting to use an invalid `wallet` or one not created by `WalletFactory`
+    /// @dev 4-byte signature: `0x23455ba1`
+    error InvalidWallet();
+
+    /// @notice Thrown by `deliverCompute()` if attempting to deliver container compute response for non-current interval
     /// @dev E.g submitting tx for `interval` < current (period elapsed) or `interval` > current (too early to submit)
     /// @dev 4-byte signature: `0x4db310c3`
     error IntervalMismatch();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if `redundancy` has been met for current `interval`
+    /// @notice Thrown by `deliverCompute()` if `redundancy` has been met for current `interval`
     /// @dev E.g submitting 4th output tx for a subscription with `redundancy == 3`
     /// @dev 4-byte signature: `0x2f4ca85b`
     error IntervalCompleted();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if `node` has already responded this `interval`
+    /// @notice Thrown by `finalizeProofValidation()` if called by a `msg.sender` that is unauthorized to finalize proof
+    /// @dev When a proof request is expired, this can be any address; until then, this is the designated `prover` address
+    /// @dev 4-byte signature: `0x8ebcfe1e`
+    error UnauthorizedProver();
+
+    /// @notice Thrown by `deliverCompute()` if `node` has already responded this `interval`
     /// @dev 4-byte signature: `0x88a21e4f`
     error NodeRespondedAlready();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to access a subscription that does not exist
+    /// @notice Thrown by `deliverCompute()` if attempting to access a subscription that does not exist
     /// @dev 4-byte signature: `0x1a00354f`
     error SubscriptionNotFound();
+
+    /// @notice Thrown by `finalizeProofValidation()` if attempting to access a proof request that does not exist
+    /// @dev 4-byte signature: `0x1d68b37c`
+    error ProofRequestNotFound();
 
     /// @notice Thrown by `cancelSubscription()` if attempting to modify a subscription not owned by caller
     /// @dev 4-byte signature: `0xa7fba711`
     error NotSubscriptionOwner();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver a completed subscription
+    /// @notice Thrown by `deliverCompute()` if a consumer has insufficient allowance to process a subscription payment
+    /// @dev 4-byte signature: `0x13be252b`
+    error InsufficientAllowance();
+
+    /// @notice Thrown by `deliverCompute()` if attempting to deliver a completed subscription
     /// @dev 4-byte signature: `0xae6704a7`
     error SubscriptionCompleted();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver a subscription before `activeAt`
+    /// @notice Thrown by `deliverCompute()` if attempting to deliver a subscription before `activeAt`
     /// @dev 4-byte signature: `0xefb74efe`
     error SubscriptionNotActive();
+
+    /// @notice Thrown by `deliverCompute` if attempting to pay a `IProver`-contract in a token it does not support receiving payments in
+    /// @dev 4-byte signature: `0xa1e29b31`
+    error UnsupportedProverToken();
+
+    /// @notice Thrown by `deliverCompute()` if after paying all fees, insufficient funds remain to pay prover
+    /// @dev 4-byte signature: `0x5251953e`
+    error InsufficientProverPayment();
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -162,8 +224,25 @@ contract Coordinator is ReentrancyGuard {
     /// @notice Initializes new Coordinator
     /// @param registry registry contract
     constructor(Registry registry) {
+        // Collect fee contract from registry
+        FEE = Fee(registry.FEE());
         // Collect inbox contract from registry
         INBOX = Inbox(registry.INBOX());
+        // Collect wallet factory contract from registry
+        WALLET_FACTORY = WalletFactory(registry.WALLET_FACTORY());
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           INTERNAL FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Given an input `amount`, returns the value of `fee` applied to it
+    /// @param amount to calculate fee on top of
+    /// @param fee to use in calculation
+    /// @return fee amount
+    function _calculateFee(uint256 amount, uint16 fee) internal pure returns (uint256) {
+        // (amount * fee) / 1e5 scaling factor
+        return amount * fee / 10_000;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -218,10 +297,10 @@ contract Coordinator is ReentrancyGuard {
             period: period,
             containerId: keccak256(abi.encode(containerId)),
             lazy: lazy,
-            prover: prover,
+            prover: payable(prover),
             paymentAmount: paymentAmount,
             paymentToken: paymentToken,
-            wallet: wallet
+            wallet: payable(wallet)
         });
 
         // Emit new subscription
@@ -275,12 +354,14 @@ contract Coordinator is ReentrancyGuard {
     /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
     /// @param proof optional container execution proof (or arbitrary metadata)
+    /// @param nodeWallet node wallet (used to receive payments, and put up escrow/slashing funds); msg.sender must be authorized spender of wallet
     function deliverCompute(
         uint32 subscriptionId,
         uint32 deliveryInterval,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        address payable nodeWallet
     ) public nonReentrant {
         // In infernet-sdk v0.1.0, loading a subscription into memory was handled
         // piece-wise in assembly because a Subscription struct contained dynamic
@@ -338,6 +419,96 @@ contract Coordinator is ReentrancyGuard {
         }
         nodeResponded[key] = true;
 
+        // Handle payments (non-zero payment per subscription fulfillment)
+        if (subscription.paymentAmount > 0) {
+            // Check if subscription wallet is valid and created by WalletFactory
+            if (!WALLET_FACTORY.isValidWallet(subscription.wallet)) {
+                revert InvalidWallet();
+            }
+
+            // Check if consumer is approved to spend `paymentAmount` `paymentToken` from the wallet
+            Wallet consumer = Wallet(subscription.wallet);
+            // Throw if allowance(consumer, paymentToken) < paymentAmount
+            if (consumer.allowance(subscription.owner, subscription.paymentToken) < subscription.paymentAmount) {
+                revert InsufficientAllowance();
+            }
+
+            // Setup temporary amount available
+            uint256 tokenAvailable = subscription.paymentAmount;
+
+            // Collect protocol fee and recipient
+            uint16 protocolFee = FEE.FEE();
+            address protocolFeeRecipient = FEE.FEE_RECIPIENT();
+
+            // Calculate fee as function of subscription payment amount
+            // Imposed as 2 * FEE * AMOUNT (rather than (AMOUNT*FEE + (AMOUNT*0.95 * FEE))); uniform application on base amount
+            uint256 paidToProtocol = _calculateFee(subscription.paymentAmount, protocolFee * 2);
+
+            // Deduct from temporary amount available and pay protocol
+            tokenAvailable -= paidToProtocol;
+            consumer.cTransfer(subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
+
+            // If no prover specified as precondition to payment fulfillment
+            if (subscription.prover == address(0)) {
+                // Immediately process remaining payment from consumer to node
+                // We do not have to verify that msg.sender is approved spender of nodeWallet because it is a balance addition
+                consumer.cTransfer(subscription.paymentToken, nodeWallet, tokenAvailable);
+                // Else, prover specified as precondition to payment fulfillment
+            } else {
+                // Setup prover contract
+                IProver prover = IProver(subscription.prover);
+
+                // Check if prover accepts `paymentToken`
+                if (!prover.isSupportedToken(subscription.paymentToken)) {
+                    revert UnsupportedProverToken();
+                }
+
+                // Collect prover fee
+                uint256 proverFee = prover.fee(subscription.paymentToken);
+
+                // Check if sufficient balance remains to pay prover
+                if (proverFee > tokenAvailable) {
+                    revert InsufficientProverPayment();
+                }
+
+                // Calculate protocol fee (paid by prover)
+                tokenAvailable -= proverFee;
+                paidToProtocol = _calculateFee(proverFee, protocolFee);
+
+                // Pay protocol
+                consumer.cTransfer(subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
+
+                // Pay prover
+                consumer.cTransfer(subscription.paymentToken, prover.getWallet(), proverFee - paidToProtocol);
+
+                // Check if node is authorized to spend from nodeWallet in full slashable amount
+                Wallet node = Wallet(nodeWallet);
+                if (node.allowance(msg.sender, subscription.paymentToken) < subscription.paymentAmount) {
+                    revert InsufficientAllowance();
+                }
+
+                // Escrow slashable amount from node
+                node.cLock(subscription.paymentToken, subscription.paymentAmount);
+
+                // Escrow payable amount from consumer
+                consumer.cLock(subscription.paymentToken, tokenAvailable);
+
+                // Store new proof request
+                proofRequests[key] = ProofRequest({
+                    expiry: uint32(block.timestamp) + 1 weeks,
+                    paymentToken: subscription.paymentToken,
+                    prover: subscription.prover,
+                    nodeWallet: node,
+                    nodeEscrowed: subscription.paymentAmount,
+                    consumerWallet: consumer,
+                    consumerEscrowed: tokenAvailable
+                });
+
+                // Initiate prover verification
+                prover.requestProofValidation(subscriptionId, interval, msg.sender, proof);
+            }
+        }
+
         // If delivering subscription lazily
         if (subscription.lazy) {
             // First, we must store the container outputs in `Inbox`
@@ -369,5 +540,48 @@ contract Coordinator is ReentrancyGuard {
 
         // Emit successful delivery
         emit SubscriptionFulfilled(subscriptionId, msg.sender);
+    }
+
+    function finalizeProofValidation(uint32 subscriptionId, uint32 interval, address node, bool valid) external {
+        // Collect proof request
+        bytes32 key = keccak256(abi.encode(subscriptionId, interval, node));
+        ProofRequest memory request = proofRequests[key];
+
+        // If proof request does not exist, throw
+        if (request.expiry == 0) {
+            revert ProofRequestNotFound();
+        }
+
+        // Unescrow wallets
+        request.nodeWallet.cUnlock(request.paymentToken, request.nodeEscrowed);
+        request.consumerWallet.cUnlock(request.paymentToken, request.consumerEscrowed);
+
+        // If proof validation period is still active
+        if (block.timestamp < request.expiry) {
+            // If caller is not prover, revert
+            if (request.prover != msg.sender) {
+                revert UnauthorizedProver();
+            }
+
+            // If proof is valid
+            if (valid) {
+                // Process payment to node
+                request.consumerWallet.cTransfer(
+                    request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+                );
+                // Else, if proof is not valid
+            } else {
+                // Slash node
+                request.nodeWallet.cTransfer(
+                    request.paymentToken, address(request.consumerWallet), request.nodeEscrowed
+                );
+            }
+            // Else, if proof validation period expired
+        } else {
+            // Process payment to node
+            request.consumerWallet.cTransfer(
+                request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+            );
+        }
     }
 }

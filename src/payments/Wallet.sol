@@ -31,8 +31,9 @@ contract Wallet is Ownable, Coordinated {
     /// @dev 4-byte signature: `0x90b8ec18`
     error TransferFailed();
 
-    /// @notice Thrown if attempting to transfer tokens in quantity greater than possible
+    /// @notice Thrown if attempting to transfer or lock tokens in quantity greater than possible
     /// @dev Thrown by `withdraw()` if attempting to withdraw `amount > unlockedBalance`
+    /// @dev Thrown by `cLock()` if attempting to escrow `amount > unlockedBalance`
     /// @dev 4-byte signature: `0x356680b7`
     error InsufficientFunds();
 
@@ -146,6 +147,14 @@ contract Wallet is Ownable, Coordinated {
     /// @param token token to lock
     /// @param amount amount to lock
     function cLock(address token, uint256 amount) external onlyCoordinator {
+        // Get unlocked token balance
+        uint256 unlockedBalance = _getUnlockedBalance(token);
+
+        // Throw if requested escrow amount is greater than available unlocked token amount
+        if (amount > unlockedBalance) {
+            revert InsufficientFunds();
+        }
+
         lockedBalance[token] += amount;
     }
 

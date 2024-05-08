@@ -206,12 +206,13 @@ contract EIP712Coordinator is EIP712, Coordinator {
         uint32 deliveryInterval,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        address payable nodeWallet
     ) external {
         // Create subscriptionId via delegatee creation + or collect if subscription already exists
         uint32 subscriptionId = createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
 
         // Deliver subscription response
-        deliverCompute(subscriptionId, deliveryInterval, input, output, proof);
+        deliverCompute(subscriptionId, deliveryInterval, input, output, proof, nodeWallet);
     }
 }

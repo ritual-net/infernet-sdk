@@ -63,7 +63,8 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,,) =
+            LibDeploy.deployContracts(initialNonce, address(0), 0);
 
         // Assign to internal
         COORDINATOR = coordinator;
@@ -109,10 +110,10 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
             period: 0,
             containerId: HASHED_MOCK_CONTAINER_ID,
             lazy: false,
-            prover: address(0),
+            prover: payable(address(0)),
             paymentAmount: 0,
-            paymentToken: address(0),
-            wallet: address(0)
+            paymentToken: payable(address(0)),
+            wallet: payable(address(0))
         });
     }
 

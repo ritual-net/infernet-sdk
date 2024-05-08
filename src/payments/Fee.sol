@@ -11,10 +11,10 @@ contract Fee is Ownable {
                                 MUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Fee amount, range: [0, 100]
-    /// @dev Updating fee past 100 is not disallowed and it is up to the `feeRecipient` to ensure bounds
+    /// @notice Fee amount, range: [0, 10000] with 2 decimal precision [0.00, 100.00]
+    /// @dev Updating fee past 100.00 is not disallowed and it is up to the `feeRecipient` to ensure bounds
     /// @dev Exposes public getter to allow checking fee
-    uint8 public FEE;
+    uint16 public FEE;
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -23,7 +23,7 @@ contract Fee is Ownable {
     /// @notice Initializes new Fee
     /// @param feeRecipient initial protocol fee recipient
     /// @param fee initial protocol fee
-    constructor(address feeRecipient, uint8 fee) {
+    constructor(address feeRecipient, uint16 fee) {
         // Set owner as fee recipient
         _initializeOwner(feeRecipient);
         // Set fee
@@ -36,7 +36,7 @@ contract Fee is Ownable {
 
     /// @notice Allows `owner` (fee recipient) to update protocol `fee`
     /// @param newFee protocol fee to update to
-    function updateFee(uint8 newFee) external onlyOwner {
+    function updateFee(uint16 newFee) external onlyOwner {
         FEE = newFee;
     }
 

@@ -88,7 +88,8 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,,) =
+            LibDeploy.deployContracts(initialNonce, address(0), 0);
 
         // Assign to internal (overriding EIP712Coordinator -> isolated Coordinator for tests)
         COORDINATOR = Coordinator(coordinator);
@@ -780,7 +781,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
 
         // Expect `NodeNotAllowed` revert
         vm.expectRevert(Allowlist.NodeNotAllowed.selector);
-        COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        COORDINATOR.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, payable(address(0)));
         vm.stopPrank();
     }
 
