@@ -212,10 +212,6 @@ contract Coordinator is ReentrancyGuard {
     /// @dev 4-byte signature: `0xa1e29b31`
     error UnsupportedProverToken();
 
-    /// @notice Thrown by `deliverCompute()` if after paying all fees, insufficient funds remain to pay prover
-    /// @dev 4-byte signature: `0x5251953e`
-    error InsufficientProverPayment();
-
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -459,11 +455,6 @@ contract Coordinator is ReentrancyGuard {
 
                 // Collect prover fee
                 uint256 proverFee = prover.fee(subscription.paymentToken);
-
-                // Check if sufficient balance remains to pay prover
-                if (proverFee > tokenAvailable) {
-                    revert InsufficientProverPayment();
-                }
 
                 // Calculate protocol fee paid by prover
                 tokenAvailable -= proverFee;

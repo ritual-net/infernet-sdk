@@ -123,7 +123,7 @@ contract WalletTest is Test {
         Wallet wallet = new Wallet(REGISTRY, address(123));
 
         // Assume balance >= amount to approve spend and amount is non-0
-        vm.assume(amount > 0);
+        vm.assume(amount > 0 && amount < UINT256_MAX); // we add + 1 during tests
         vm.assume(balance >= amount);
 
         // Transfer some Ether balance to contract

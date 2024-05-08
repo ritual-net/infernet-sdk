@@ -4,9 +4,9 @@ pragma solidity ^0.8.4;
 import {BaseProver} from "./Base.sol";
 import {Registry} from "../../../src/Registry.sol";
 
-/// @title OptimisticProver
+/// @title MockOptimisticProver
 /// @notice Implements a mock optimistic prover contract that returns some status after period of non-atomic delay (via `mockDeliverProof()`)
-contract OptimisticProver is BaseProver {
+contract MockOptimisticProver is BaseProver {
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/

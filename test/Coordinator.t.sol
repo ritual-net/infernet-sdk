@@ -5,14 +5,19 @@ import {Test} from "forge-std/Test.sol";
 import {Registry} from "../src/Registry.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
+import {MockToken} from "./mocks/MockToken.sol";
+import {Wallet} from "../src/payments/Wallet.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
 import {BaseConsumer} from "../src/consumer/Base.sol";
 import {MockProtocol} from "./mocks/MockProtocol.sol";
 import {Allowlist} from "../src/pattern/Allowlist.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
+import {MockAtomicProver} from "./mocks/prover/Atomic.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
+import {WalletFactory} from "../src/payments/WalletFactory.sol";
 import {Coordinator, Subscription} from "../src/Coordinator.sol";
 import {MockCallbackConsumer} from "./mocks/consumer/Callback.sol";
+import {MockOptimisticProver} from "./mocks/prover/Optimistic.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
 import {MockAllowlistSubscriptionConsumer} from "./mocks/consumer/AllowlistSubscription.sol";
 
@@ -76,11 +81,20 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
     /// @notice Mock protocol wallet
     MockProtocol internal PROTOCOL;
 
+    /// @notice Registry
+    Registry internal REGISTRY;
+
     /// @notice Coordinator
     Coordinator internal COORDINATOR;
 
     /// @notice Inbox
     Inbox internal INBOX;
+
+    /// @notice Wallet factory
+    WalletFactory internal WALLET_FACTORY;
+
+    /// @notice Mock ERC20 token
+    MockToken internal TOKEN;
 
     /// @notice Mock node (Alice)
     MockNode internal ALICE;
@@ -100,6 +114,12 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
     /// @notice Mock subscription consumer w/ Allowlist
     MockAllowlistSubscriptionConsumer internal ALLOWLIST_SUBSCRIPTION;
 
+    /// @notice Mock atomic prover
+    MockAtomicProver internal ATOMIC_PROVER;
+
+    /// @notice Mock optimistic prover
+    MockOptimisticProver internal OPTIMISTIC_PROVER;
+
     /*//////////////////////////////////////////////////////////////
                                  SETUP
     //////////////////////////////////////////////////////////////*/
@@ -110,15 +130,20 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         address mockProtocolWalletAddress = vm.computeCreateAddress(address(this), initialNonce + 6);
 
         // Initialize contracts
-        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,,) =
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,, WalletFactory walletFactory) =
             LibDeploy.deployContracts(initialNonce, mockProtocolWalletAddress, MOCK_PROTOCOL_FEE);
 
         // Initialize mock protocol wallet
         PROTOCOL = new MockProtocol(registry);
 
+        // Create mock token
+        TOKEN = new MockToken();
+
         // Assign to internal (overriding EIP712Coordinator -> isolated Coordinator for tests)
+        REGISTRY = registry;
         COORDINATOR = Coordinator(coordinator);
         INBOX = inbox;
+        WALLET_FACTORY = walletFactory;
 
         // Initalize mock nodes
         ALICE = new MockNode(registry);
@@ -136,6 +161,10 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         address[] memory initialAllowed = new address[](1);
         initialAllowed[0] = address(ALICE);
         ALLOWLIST_SUBSCRIPTION = new MockAllowlistSubscriptionConsumer(address(registry), initialAllowed);
+
+        // Initialize mock provers
+        ATOMIC_PROVER = new MockAtomicProver(registry);
+        OPTIMISTIC_PROVER = new MockOptimisticProver(registry);
     }
 }
 
@@ -957,5 +986,725 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         // Array out-of-bounds access since atomic tx execution previously failed
         vm.expectRevert();
         INBOX.read(HASHED_MOCK_CONTAINER_ID, address(BOB), 0);
+    }
+}
+
+/// @title CoordinatorEagerPaymentNoProofTest
+/// @notice Coordinator tests specific to eager subscriptions with payments but no proofs
+contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
+    /// @notice Subscription can be fulfilled with ETH payment
+    function testSubscriptionCanBeFulfilledWithETHPayment() public {
+        // Create new wallet with Alice as owner
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+
+        // Create new wallet with Bob as owner
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Fund alice wallet with 1 ether
+        vm.deal(aliceWallet, 1 ether);
+
+        // Create new one-time subscription with 1 eth payout
+        uint32 subId =
+            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_PROVER);
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether);
+
+        // Verify initial balances and allowances
+        assertEq(aliceWallet.balance, 1 ether);
+
+        // Execute response fulfillment from Bob
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert new balances
+        assertEq(aliceWallet.balance, 0 ether);
+        assertEq(bobWallet.balance, 0.8978 ether);
+        assertEq(PROTOCOL.getEtherBalance(), 0.1022 ether);
+
+        // Assert consumed allowance
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0 ether);
+    }
+
+    /// @notice Subscription can be fulfilled with ERC20 payment
+    function testSubscriptionCanBeFulfilledWithERC20() public {
+        // Create new wallet with Alice as owner
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+
+        // Create new wallet with Bob as owner
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 100 tokens to alice wallet
+        TOKEN.mint(aliceWallet, 100e6);
+
+        // Create new one-time subscription with 50e6 payout
+        uint32 subId =
+            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, aliceWallet, NO_PROVER);
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 90e6 tokens
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), address(TOKEN), 90e6);
+
+        // Verify initial balances and allowances
+        assertEq(TOKEN.balanceOf(aliceWallet), 100e6);
+
+        // Execute response fulfillment from Bob
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert new balances
+        assertEq(TOKEN.balanceOf(aliceWallet), 50e6);
+        assertEq(TOKEN.balanceOf(bobWallet), 44_890_000);
+        assertEq(PROTOCOL.getTokenBalance(address(TOKEN)), 5_110_000);
+
+        // Assert consumed allowance
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), address(TOKEN)), 40e6);
+    }
+
+    /// @notice Subscription can be fulfilled across intervals with ERC20 payment
+    function testSubscriptionCanBeFulfilledAcrossIntervalsWithERC20Payment() public {
+        // Create new wallet with Alice as owner
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+
+        // Create new wallet with Bob as owner
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 100 tokens to alice wallet
+        TOKEN.mint(aliceWallet, 100e6);
+
+        // Create new two-time subscription with 40e6 payout
+        vm.warp(0 minutes);
+        uint32 subId = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID, 2, 1 minutes, 1, false, address(TOKEN), 40e6, aliceWallet, NO_PROVER
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 90e6 tokens
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(SUBSCRIPTION), address(TOKEN), 90e6);
+
+        // Verify initial balances and allowances
+        assertEq(TOKEN.balanceOf(aliceWallet), 100e6);
+
+        // Execute response fulfillment from Bob
+        vm.warp(1 minutes);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Execute response fulfillment from Charlie (notice that for no proof submissions there is no collateral so we can use any wallet)
+        vm.warp(2 minutes);
+        CHARLIE.deliverCompute(subId, 2, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert new balances
+        assertEq(TOKEN.balanceOf(aliceWallet), 20e6);
+        assertEq(TOKEN.balanceOf(bobWallet), (40e6 * 2) - (4_088_000 * 2));
+        assertEq(PROTOCOL.getTokenBalance(address(TOKEN)), 4_088_000 * 2);
+
+        // Assert consumed allowance
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(SUBSCRIPTION), address(TOKEN)), 10e6);
+    }
+
+    /// @notice Subscription cannot be fulfilled with an invalid `Wallet` not created by `WalletFactory`
+    function testSubscriptionCannotBeFulfilledWithInvalidWalletProvenance() public {
+        // Create new wallet for Alice directly
+        Wallet aliceWallet = new Wallet(REGISTRY, address(ALICE));
+
+        // Create new wallet with Bob as owner
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Create new one-time subscription with 50e6 payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, address(aliceWallet), NO_PROVER
+        );
+
+        // Execute response fulfillment from Bob, expecting failure
+        vm.expectRevert(Coordinator.InvalidWallet.selector);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+    }
+
+    /// @notice Subscription cannot be fulfilled if `Wallet` does not approve consumer
+    function testSubscriptionCannotBeFulfilledIfSpenderNoAllowance() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Fund alice wallet with 1 ether
+        vm.deal(aliceWallet, 1 ether);
+
+        // Create new one-time subscription with 1 eth payout
+        uint32 subId =
+            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_PROVER);
+
+        // Verify CALLBACK has 0 allowance to spend on aliceWallet
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0 ether);
+
+        // Execute response fulfillment from Bob expecting failure when paying protocol fee
+        vm.expectRevert(Wallet.InsufficientAllowance.selector);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+    }
+
+    /// @notice Subscription cannot be fulfilled if `Wallet` only partially approves consumer
+    function testSubscriptionCannotBeFulfilledIfSpenderPartialAllowance() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Fund alice wallet with 1 ether
+        vm.deal(aliceWallet, 1 ether);
+
+        // Create new one-time subscription with 1 eth payout
+        uint32 subId =
+            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_PROVER);
+
+        // Increase callback allowance to just under 1 ether
+        vm.startPrank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether - 1 wei);
+
+        // Execute response fulfillment from Bob expecting failure when paying protocol fee
+        vm.expectRevert(Wallet.InsufficientAllowance.selector);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+    }
+}
+
+/// @title CoordinatorLazyPaymentNoProofTest
+/// @notice Coordinator tests specific to lazy subscriptions with payments but no proofs
+contract CoordinatorLazyPaymentNoProofTest is CoordinatorTest {
+    /// @notice Subscription can be fulfilled with ETH payment
+    function testLazySubscriptionCanBeFulfilledWithPayment() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 100 tokens to alice wallet
+        TOKEN.mint(aliceWallet, 100e6);
+
+        // Create new one-time subscription with 40e6 payout
+        vm.warp(0 minutes);
+        uint32 subId = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID,
+            1,
+            1 minutes,
+            1,
+            true, // lazy == true
+            address(TOKEN),
+            40e6,
+            aliceWallet,
+            NO_PROVER
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 90e6 tokens
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(SUBSCRIPTION), address(TOKEN), 90e6);
+
+        // Verify initial balances and allowances
+        assertEq(TOKEN.balanceOf(aliceWallet), 100e6);
+
+        // Execute response fulfillment from Bob
+        vm.warp(1 minutes);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert new balances
+        assertEq(TOKEN.balanceOf(aliceWallet), 60e6);
+        assertEq(TOKEN.balanceOf(bobWallet), 35_912_000);
+        assertEq(PROTOCOL.getTokenBalance(address(TOKEN)), 4_088_000);
+
+        // Assert consumed allowance
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(SUBSCRIPTION), address(TOKEN)), 50e6);
+    }
+}
+
+/// @title CoordinatorEagerPaymentProofTest
+/// @notice Coordinator tests specific to eager subscriptions with payments and proofs
+contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
+    /// @notice Subscription cannot be fulfilled if node is not approved to spend from wallet
+    function testSubscriptionCannotBeFulfilledIfNodeNotApprovedToSpendFromWallet() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 50 tokens to alice wallet
+        TOKEN.mint(aliceWallet, 50e6);
+
+        // Mint 50 tokens to bob wallet (ensuring node has sufficient funds to put up for escrow)
+        TOKEN.mint(bobWallet, 50e6);
+
+        // Create new one-time subscription with 40e6 payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            address(TOKEN),
+            50e6,
+            aliceWallet,
+            // Specify atomic prover
+            address(ATOMIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 50e6 tokens
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), address(TOKEN), 50e6);
+
+        // Verify initial balances and allowances
+        assertEq(TOKEN.balanceOf(aliceWallet), 50e6);
+        assertEq(TOKEN.balanceOf(bobWallet), 50e6);
+
+        // Setup atomic prover approved token + fee (5 tokens)
+        ATOMIC_PROVER.updateSupportedToken(address(TOKEN), true);
+        ATOMIC_PROVER.updateFee(address(TOKEN), 5e6);
+
+        // Ensure that atomic prover will return true for proof validation
+        ATOMIC_PROVER.setNextValidityTrue();
+
+        // Execute response fulfillment from Charlie expecting it to fail given no authorization to Bob's wallet
+        vm.warp(1 minutes);
+        vm.expectRevert(Wallet.InsufficientAllowance.selector);
+        CHARLIE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+    }
+
+    /// @notice Subscription cannot be fulfilled if node wallet has insufficient funds for escrow
+    function testSubscriptionCannotBeFulfilledIfNodeWalletHasInsufficientFundsForEscrow() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 50 tokens to alice wallet (but not to Bob's wallet)
+        TOKEN.mint(aliceWallet, 50e6);
+
+        // Create new one-time subscription with 40e6 payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            address(TOKEN),
+            50e6,
+            aliceWallet,
+            // Specify atomic prover
+            address(ATOMIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 50e6 tokens
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), address(TOKEN), 50e6);
+
+        // Allow BOB to sepnd bob wallet balance up to 50e6 tokens
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), address(TOKEN), 50e6);
+
+        // Verify initial balances and allowances
+        assertEq(TOKEN.balanceOf(aliceWallet), 50e6);
+        assertEq(TOKEN.balanceOf(bobWallet), 0e6);
+
+        // Setup atomic prover approved token + fee (5 tokens)
+        ATOMIC_PROVER.updateSupportedToken(address(TOKEN), true);
+        ATOMIC_PROVER.updateFee(address(TOKEN), 5e6);
+
+        // Ensure that atomic prover will return true for proof validation
+        ATOMIC_PROVER.setNextValidityTrue();
+
+        // Execute response fulfillment expecting it to fail given not enough unlocked funds
+        vm.warp(1 minutes);
+        vm.expectRevert(Wallet.InsufficientFunds.selector);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+    }
+
+    /// @notice Subscription can be fulfilled with ERC20 payment when proof validates correctly
+    function testSubscriptionFulfillmentWithEagerProofValidatingTrue() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 50 tokens to wallets
+        TOKEN.mint(aliceWallet, 50e6);
+        TOKEN.mint(bobWallet, 50e6);
+
+        // Create new one-time subscription with 40e6 payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            address(TOKEN),
+            40e6,
+            aliceWallet,
+            // Specify atomic prover
+            address(ATOMIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 50e6 tokens
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), address(TOKEN), 50e6);
+
+        // Allow Bob to spend bob wallet balance up to 50e6 tokens
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), address(TOKEN), 50e6);
+
+        // Verify initial balances and allowances
+        assertEq(TOKEN.balanceOf(aliceWallet), 50e6);
+        assertEq(TOKEN.balanceOf(bobWallet), 50e6);
+
+        // Setup atomic prover approved token + fee (5 tokens)
+        ATOMIC_PROVER.updateSupportedToken(address(TOKEN), true);
+        ATOMIC_PROVER.updateFee(address(TOKEN), 5e6);
+
+        // Ensure that atomic prover will return true for proof validation
+        ATOMIC_PROVER.setNextValidityTrue();
+
+        // Execute response fulfillment from Bob
+        vm.warp(1 minutes);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert new balances
+        assertEq(TOKEN.balanceOf(aliceWallet), 10e6); // -40
+        assertEq(TOKEN.balanceOf(bobWallet), 80_912_000); // 50 (initial) + (40 - (40 * 5.11% * 2) - (5))
+        assertEq(TOKEN.balanceOf(address(ATOMIC_PROVER)), 4_744_500); // (5 - (5 * 5.11%))
+        assertEq(PROTOCOL.getTokenBalance(address(TOKEN)), 4_343_500);
+
+        // Assert consumed allowance
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), address(TOKEN)), 10e6);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), address(TOKEN)), 50e6);
+    }
+
+    /// @notice Node operator is slashed when proof validates incorrectly
+    function testSubscriptionFulfillmentWithEagerProofValidatingFalse() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 1 ether to Alice and Bob
+        vm.deal(address(aliceWallet), 1 ether);
+        vm.deal(address(bobWallet), 1 ether);
+
+        // Create new one-time subscription with 1 ether payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            ZERO_ADDRESS,
+            1 ether,
+            aliceWallet,
+            // Specify atomic prover
+            address(ATOMIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether);
+
+        // Allow Bob to spend bob wallet balance up to 1 ether
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), ZERO_ADDRESS, 1 ether);
+
+        // Verify initial balances and allowances
+        assertEq(aliceWallet.balance, 1 ether);
+        assertEq(bobWallet.balance, 1 ether);
+
+        // Setup atomic prover approved token + fee (0.111 ether)
+        ATOMIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
+        ATOMIC_PROVER.updateFee(ZERO_ADDRESS, 111e15);
+
+        // Ensure that atomic prover will return false for proof validation
+        ATOMIC_PROVER.setNextValidityFalse();
+
+        // Execute response fulfillment from Bob
+        vm.warp(1 minutes);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert new balances
+        // Alice --> 1 ether - protocol fee (0.1022 ether) - prover fee (0.111 ether) + slashed (1 ether) = 1.7868 ether
+        assertEq(aliceWallet.balance, 17_868e14);
+        // Bob --> -1 ether
+        assertEq(bobWallet.balance, 0 ether);
+        // Prover --> +0.111 * (1 - 0.0511) ether = 0.1053279 ether
+        assertEq(ATOMIC_PROVER.getEtherBalance(), 1_053_279e11);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.0056721 ether) = 0.1078721 ether
+        assertEq(PROTOCOL.getEtherBalance(), 1_078_721e11);
+
+        // Assert consumed allowance
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 7868e14);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0 ether);
+    }
+}
+
+/// @title CoordinatorLazyPaymentProofTest
+/// @notice Coordinator tests specific to lazy subscriptions with payments and proofs
+contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
+    /// @notice Subscription can be fulfilled with payment when proof validates correctly
+    function testLazySubscriptionWithProofCanBeFulfilledWhenProofValidatesCorrectlyInTime() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 1 ether to Alice and Bob
+        vm.deal(address(aliceWallet), 1 ether);
+        vm.deal(address(bobWallet), 1 ether);
+
+        // Create new one-time subscription with 1 ether payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            ZERO_ADDRESS,
+            1 ether,
+            aliceWallet,
+            // Specify optimistic prover
+            address(OPTIMISTIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether);
+
+        // Allow Bob to spend bob wallet balance up to 1 ether
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), ZERO_ADDRESS, 1 ether);
+
+        // Verify initial balances and allowances
+        assertEq(aliceWallet.balance, 1 ether);
+        assertEq(bobWallet.balance, 1 ether);
+
+        // Setup optimistic prover approved token + fee (0.1 ether)
+        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+
+        // Execute response fulfillment from Bob
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert immediate balances
+        // Alice -> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        // Alice --> allowance: 0 ether
+        assertEq(aliceWallet.balance, 7978e14);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
+        // Bob --> 1 ether
+        // Bob --> allowance: 0 ether
+        assertEq(bobWallet.balance, 1 ether);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0);
+        // Prover --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.00511 ether) = 0.10731 ether
+        assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+
+        // Fast forward 1 day and trigger optimistic response with valid: true
+        vm.warp(1 days);
+        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), true);
+
+        // Assert new balances
+        // Alice --> 0 ether
+        assertEq(aliceWallet.balance, 0 ether);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
+        // Bob --> 1 ether + 7978e14 ether
+        // Bob --> allowance: 1 ether
+        assertEq(bobWallet.balance, 17_978e14);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
+        // Prover, protocol stay same
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+    }
+
+    /// @notice Node operator is slashed when proof validates incorrectly
+    function testLazySubscriptionWithProofCanBeFulfilledWhenNodeIsSlashedInTime() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 1 ether to Alice and Bob
+        vm.deal(address(aliceWallet), 1 ether);
+        vm.deal(address(bobWallet), 1 ether);
+
+        // Create new one-time subscription with 1 ether payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            ZERO_ADDRESS,
+            1 ether,
+            aliceWallet,
+            // Specify optimistic prover
+            address(OPTIMISTIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether);
+
+        // Allow Bob to spend bob wallet balance up to 1 ether
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), ZERO_ADDRESS, 1 ether);
+
+        // Verify initial balances and allowances
+        assertEq(aliceWallet.balance, 1 ether);
+        assertEq(bobWallet.balance, 1 ether);
+
+        // Setup optimistic prover approved token + fee (0.1 ether)
+        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+
+        // Execute response fulfillment from Bob
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert immediate balances
+        // Alice -> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        // Alice --> allowance: 0 ether
+        assertEq(aliceWallet.balance, 7978e14);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
+        // Bob --> 1 ether
+        // Bob --> allowance: 0 ether
+        assertEq(bobWallet.balance, 1 ether);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0);
+        // Prover --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.00511 ether) = 0.10731 ether
+        assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+
+        // Fast forward 1 day and trigger optimistic response with valid: false
+        vm.warp(1 days);
+        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), false);
+
+        // Assert new balances
+        // Alice --> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether) + 1 ether (slashed from node)
+        // Alice --> allowance: 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        assertEq(aliceWallet.balance, 17_978e14);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 7978e14);
+        // Bob --> 0 ether
+        // Bob --> allowance: 0 ether
+        assertEq(bobWallet.balance, 0);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0 ether);
+        // Prover, protocol stay same
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+    }
+
+    /// @notice Subscription can be fulfilled with ERC20 payment when proof request time expires
+    function testLazySubscriptionCanBeFulfilledWhenProofWindowExpires() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 1 ether to Alice and Bob
+        vm.deal(address(aliceWallet), 1 ether);
+        vm.deal(address(bobWallet), 1 ether);
+
+        // Create new one-time subscription with 1 ether payout
+        vm.warp(0);
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            ZERO_ADDRESS,
+            1 ether,
+            aliceWallet,
+            // Specify optimistic prover
+            address(OPTIMISTIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether);
+
+        // Allow Bob to spend bob wallet balance up to 1 ether
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), ZERO_ADDRESS, 1 ether);
+
+        // Verify initial balances and allowances
+        assertEq(aliceWallet.balance, 1 ether);
+        assertEq(bobWallet.balance, 1 ether);
+
+        // Setup optimistic prover approved token + fee (0.1 ether)
+        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+
+        // Execute response fulfillment from Bob
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Assert immediate balances
+        // Alice -> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        // Alice --> allowance: 0 ether
+        assertEq(aliceWallet.balance, 7978e14);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
+        // Bob --> 1 ether
+        // Bob --> allowance: 0 ether
+        assertEq(bobWallet.balance, 1 ether);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0);
+        // Prover --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.00511 ether) = 0.10731 ether
+        assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+
+        // Fast forward 1 week and trigger forced proof validation
+        vm.warp(1 weeks);
+        COORDINATOR.finalizeProofValidation(subId, 1, address(BOB), true);
+
+        // Assert new balances
+        // Alice --> 0 ether
+        assertEq(aliceWallet.balance, 0 ether);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
+        // Bob --> 1 ether + 7978e14 ether
+        // Bob --> allowance: 1 ether
+        assertEq(bobWallet.balance, 17_978e14);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
+        // Prover, protocol stay same
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+    }
+
+    /// @notice Multiple subscriptions can be fulfilled in parallel with lazy payout duration
+    function testMultipleSubscriptionsCanBeFullfilledInParallelToLazyProof() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 2 ether to Alice and Bob
+        vm.deal(address(aliceWallet), 2 ether);
+        vm.deal(address(bobWallet), 2 ether);
+
+        // Create new recurring subscription with 1 ether payout
+        vm.warp(0);
+        uint32 subId = SUBSCRIPTION.createMockSubscription(
+            MOCK_CONTAINER_ID,
+            2,
+            1 days,
+            1,
+            true,
+            ZERO_ADDRESS,
+            1 ether,
+            aliceWallet,
+            // Specify optimistic prover
+            address(OPTIMISTIC_PROVER)
+        );
+
+        // Setup optimistic prover approved token + fee (0.1 ether)
+        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 2 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(SUBSCRIPTION), ZERO_ADDRESS, 2 ether);
+
+        // Allow Bob to spend bob wallet balance up to 2 ether
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), ZERO_ADDRESS, 2 ether);
+
+        // Verify initial balances
+        assertEq(aliceWallet.balance, 2 ether);
+        assertEq(bobWallet.balance, 2 ether);
+
+        // Deliver first subscription from Bob
+        vm.warp(1 days);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // During optimistic window, process as false
+        vm.warp(1 days + 1 hours);
+        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), false);
+
+        // Deliver second subscription from Bob
+        vm.warp(2 days);
+        BOB.deliverCompute(subId, 2, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Fast forward past optimistic window, processing in favor of Bob
+        vm.warp(10 days);
+        COORDINATOR.finalizeProofValidation(subId, 2, address(BOB), true);
+
+        // Assert new balances
+        assertEq(aliceWallet.balance, 17_978e14);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(SUBSCRIPTION), ZERO_ADDRESS), 7978e14);
+        assertEq(bobWallet.balance, 17_978e14);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 18_978e13);
+        assertEq(PROTOCOL.getEtherBalance(), 21_462e13);
     }
 }

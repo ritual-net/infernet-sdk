@@ -4,9 +4,9 @@ pragma solidity ^0.8.4;
 import {BaseProver} from "./Base.sol";
 import {Registry} from "../../../src/Registry.sol";
 
-/// @title AtomicProver
+/// @title MockAtomicProver
 /// @notice Implements a mock atomic prover contract that immediately returns `status` as proof validity
-contract AtomicProver is BaseProver {
+contract MockAtomicProver is BaseProver {
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
     //////////////////////////////////////////////////////////////*/
