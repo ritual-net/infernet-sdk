@@ -88,6 +88,9 @@ struct ProofRequest {
     /// @notice Amount of `paymentToken` escrowed by the node `Wallet` as slashable payment to `consumerWallet`
     /// @dev While this is available via the `Subscription` struct (`paymentAmount`) we cannot rely on it in case a malicious consumer cancels their subscription
     uint256 nodeEscrowed;
+    /// @notice Owner of subscription requesting proof
+    /// @dev Necessary to store in case `Subscription` struct is deleted due to cancellation + appropriately update `Wallet` allowances
+    address consumer;
     /// @notice Address of consumer `Wallet` which has escrowed `consumerEscrowed` `paymentToken`
     /// @dev While this is available via the `Subscription` struct we cannot rely on it in case a malicious consumer cancels their subscription
     Wallet consumerWallet;
@@ -196,10 +199,6 @@ contract Coordinator is ReentrancyGuard {
     /// @notice Thrown by `cancelSubscription()` if attempting to modify a subscription not owned by caller
     /// @dev 4-byte signature: `0xa7fba711`
     error NotSubscriptionOwner();
-
-    /// @notice Thrown by `deliverCompute()` if a consumer has insufficient allowance to process a subscription payment
-    /// @dev 4-byte signature: `0x13be252b`
-    error InsufficientAllowance();
 
     /// @notice Thrown by `deliverCompute()` if attempting to deliver a completed subscription
     /// @dev 4-byte signature: `0xae6704a7`
@@ -426,14 +425,10 @@ contract Coordinator is ReentrancyGuard {
                 revert InvalidWallet();
             }
 
-            // Check if consumer is approved to spend `paymentAmount` `paymentToken` from the wallet
+            // Setup consumer wallet
             Wallet consumer = Wallet(subscription.wallet);
-            // Throw if allowance(consumer, paymentToken) < paymentAmount
-            if (consumer.allowance(subscription.owner, subscription.paymentToken) < subscription.paymentAmount) {
-                revert InsufficientAllowance();
-            }
 
-            // Setup temporary amount available
+            // Setup initial payment amount
             uint256 tokenAvailable = subscription.paymentAmount;
 
             // Collect protocol fee and recipient
@@ -446,13 +441,12 @@ contract Coordinator is ReentrancyGuard {
 
             // Deduct from temporary amount available and pay protocol
             tokenAvailable -= paidToProtocol;
-            consumer.cTransfer(subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
+            consumer.cTransfer(subscription.owner, subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
 
             // If no prover specified as precondition to payment fulfillment
             if (subscription.prover == address(0)) {
                 // Immediately process remaining payment from consumer to node
-                // We do not have to verify that msg.sender is approved spender of nodeWallet because it is a balance addition
-                consumer.cTransfer(subscription.paymentToken, nodeWallet, tokenAvailable);
+                consumer.cTransfer(subscription.owner, subscription.paymentToken, nodeWallet, tokenAvailable);
                 // Else, prover specified as precondition to payment fulfillment
             } else {
                 // Setup prover contract
@@ -471,27 +465,26 @@ contract Coordinator is ReentrancyGuard {
                     revert InsufficientProverPayment();
                 }
 
-                // Calculate protocol fee (paid by prover)
+                // Calculate protocol fee paid by prover
                 tokenAvailable -= proverFee;
                 paidToProtocol = _calculateFee(proverFee, protocolFee);
 
-                // Pay protocol
-                consumer.cTransfer(subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
+                // Pay protocol on behalf of prover
+                consumer.cTransfer(subscription.owner, subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
 
-                // Pay prover
-                consumer.cTransfer(subscription.paymentToken, prover.getWallet(), proverFee - paidToProtocol);
+                // Pay prover (prover fee - paid protocol fee)
+                consumer.cTransfer(
+                    subscription.owner, subscription.paymentToken, prover.getWallet(), proverFee - paidToProtocol
+                );
 
-                // Check if node is authorized to spend from nodeWallet in full slashable amount
+                // Setup node wallet
                 Wallet node = Wallet(nodeWallet);
-                if (node.allowance(msg.sender, subscription.paymentToken) < subscription.paymentAmount) {
-                    revert InsufficientAllowance();
-                }
 
                 // Escrow slashable amount from node
-                node.cLock(subscription.paymentToken, subscription.paymentAmount);
+                node.cLock(msg.sender, subscription.paymentToken, subscription.paymentAmount);
 
-                // Escrow payable amount from consumer
-                consumer.cLock(subscription.paymentToken, tokenAvailable);
+                // Escrow remaining payable amount (to node) from consumer
+                consumer.cLock(subscription.owner, subscription.paymentToken, tokenAvailable);
 
                 // Store new proof request
                 proofRequests[key] = ProofRequest({
@@ -500,6 +493,7 @@ contract Coordinator is ReentrancyGuard {
                     prover: subscription.prover,
                     nodeWallet: node,
                     nodeEscrowed: subscription.paymentAmount,
+                    consumer: subscription.owner,
                     consumerWallet: consumer,
                     consumerEscrowed: tokenAvailable
                 });
@@ -542,6 +536,13 @@ contract Coordinator is ReentrancyGuard {
         emit SubscriptionFulfilled(subscriptionId, msg.sender);
     }
 
+    /// @notice Inbound counterpart to `IProver.requestProofValidation()` to process proof validation
+    /// @dev If called by `prover`, accepts `valid` to process payout
+    /// @dev Else, can be called by anyone after 1 week timeout to side in favor of node by default
+    /// @param subscriptionId subscription ID for which proof validation was requested
+    /// @param interval interval of subscription for which proof validation was requested
+    /// @param node node in said interval for which proof validation was requested
+    /// @param valid `true` if proof was valid, else `false`
     function finalizeProofValidation(uint32 subscriptionId, uint32 interval, address node, bool valid) external {
         // Collect proof request
         bytes32 key = keccak256(abi.encode(subscriptionId, interval, node));
@@ -553,8 +554,8 @@ contract Coordinator is ReentrancyGuard {
         }
 
         // Unescrow wallets
-        request.nodeWallet.cUnlock(request.paymentToken, request.nodeEscrowed);
-        request.consumerWallet.cUnlock(request.paymentToken, request.consumerEscrowed);
+        request.nodeWallet.cUnlock(node, request.paymentToken, request.nodeEscrowed);
+        request.consumerWallet.cUnlock(request.consumer, request.paymentToken, request.consumerEscrowed);
 
         // If proof validation period is still active
         if (block.timestamp < request.expiry) {
@@ -567,21 +568,24 @@ contract Coordinator is ReentrancyGuard {
             if (valid) {
                 // Process payment to node
                 request.consumerWallet.cTransfer(
-                    request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+                    request.consumer, request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
                 );
                 // Else, if proof is not valid
             } else {
                 // Slash node
                 request.nodeWallet.cTransfer(
-                    request.paymentToken, address(request.consumerWallet), request.nodeEscrowed
+                    node, request.paymentToken, address(request.consumerWallet), request.nodeEscrowed
                 );
             }
             // Else, if proof validation period expired
         } else {
             // Process payment to node
             request.consumerWallet.cTransfer(
-                request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+                request.consumer, request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
             );
         }
+
+        // Delete proof request (proof processed)
+        delete proofRequests[key];
     }
 }

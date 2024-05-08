@@ -34,8 +34,15 @@ contract Wallet is Ownable, Coordinated {
     /// @notice Thrown if attempting to transfer or lock tokens in quantity greater than possible
     /// @dev Thrown by `withdraw()` if attempting to withdraw `amount > unlockedBalance`
     /// @dev Thrown by `cLock()` if attempting to escrow `amount > unlockedBalance`
+    /// @dev Thrown by `cUnlock()` if attempting to unlock `amount > lockedBalance`
     /// @dev 4-byte signature: `0x356680b7`
     error InsufficientFunds();
+
+    /// @notice Thrown if attempting to transfer or lock tokens in quantity greater than allowed to a `spender`
+    /// @dev Thrown by `cTranasfer()` if attempting to transfer `amount` > allowed
+    /// @dev Thrown by `cLock()` if attempting to lcok `amount` > allowed
+    /// @dev 4-byte signature: `0x13be252b`
+    error InsufficientAllowance();
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -126,27 +133,29 @@ contract Wallet is Ownable, Coordinated {
         allowance[spender][token] = amount;
     }
 
-    /// @notice Allows coordinator to transfer `amount` `tokens` to `to`
+    /// @notice Allows coordinator to transfer `amount` `tokens` to `to` on behalf of `spender`
+    /// @param spender on-behalf of whom to transfer tokens
     /// @param token token to transfer (ERC20 contract address or `address(0)` for ETH)
     /// @param to address to transfer to
     /// @param amount amount of token to transfer
-    function cTransfer(address token, address to, uint256 amount) external onlyCoordinator {
+    function cTransfer(address spender, address token, address to, uint256 amount) external onlyCoordinator {
+        // Ensure allowance allows transferring `amount` `token`
+        if (allowance[spender][token] < amount) {
+            revert InsufficientAllowance();
+        }
+
+        // Decrement allowance
+        allowance[spender][token] -= amount;
+
+        // Transfer token
         _transferToken(token, to, amount);
     }
 
-    /// @notice Allows coordinator to decrease a `spender`(s) `token` spend allowance by `amount`
-    /// @dev Notice, this does not allow increasing a `spender`(s) allowance; just decreasing by some consumed amount
-    /// @param spender consumer address
-    /// @param token spent token
-    /// @param amount amount spent
-    function cDecreaseAllowance(address spender, address token, uint256 amount) external onlyCoordinator {
-        allowance[spender][token] -= amount;
-    }
-
-    /// @notice Allows coordinator to lock `amount` `token`(s) indefinitely in escrow
+    /// @notice Allows coordinator to lock `amount` `token`(s) in escrow on behalf of `spender`
+    /// @param spender on-behalf of whom tokens are locked
     /// @param token token to lock
     /// @param amount amount to lock
-    function cLock(address token, uint256 amount) external onlyCoordinator {
+    function cLock(address spender, address token, uint256 amount) external onlyCoordinator {
         // Get unlocked token balance
         uint256 unlockedBalance = _getUnlockedBalance(token);
 
@@ -155,14 +164,36 @@ contract Wallet is Ownable, Coordinated {
             revert InsufficientFunds();
         }
 
+        // Ensure allowance allows locking `amount` `token`
+        if (allowance[spender][token] < amount) {
+            revert InsufficientAllowance();
+        }
+
+        // Decrement allowance
+        allowance[spender][token] -= amount;
+
+        // Increment escrow locked balance
         lockedBalance[token] += amount;
     }
 
-    /// @notice Allows coordinator to unlock `amount` `token`(s) from escrow
+    /// @notice Allows coordinator to unlock `amount` `token`(s) from escrow on behalf of `spender`
+    /// @param spender on-behalf of whom tokens are unlocked
     /// @param token token to unlock
     /// @param amount amount to unlock
-    function cUnlock(address token, uint256 amount) external onlyCoordinator {
+    function cUnlock(address spender, address token, uint256 amount) external onlyCoordinator {
+        // Get locked token balance
+        uint256 locked = lockedBalance[token];
+
+        // Throw if requested unlock amount is greater than currently escrowed token amount
+        if (amount > locked) {
+            revert InsufficientFunds();
+        }
+
+        // Decrement locked balance
         lockedBalance[token] -= amount;
+
+        // Increment spender allowance (now that funds are unlocked)
+        allowance[spender][token] += amount;
     }
 
     /*//////////////////////////////////////////////////////////////
