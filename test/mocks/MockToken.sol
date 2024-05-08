@@ -20,6 +20,12 @@ contract MockToken is ERC20 {
         return "TKN";
     }
 
+    /// @notice Overrides ERC20.decimals
+    /// @dev Purposefully selects a weird decimal implementation (WBTC) to test accurancy independent of standard
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
     /*//////////////////////////////////////////////////////////////
                            UTILITY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
