@@ -1424,6 +1424,52 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
 /// @title CoordinatorLazyPaymentProofTest
 /// @notice Coordinator tests specific to lazy subscriptions with payments and proofs
 contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
+    /// @notice Subscription cannot be fulfilled with incorrect proof validation
+    function testSubscriptionCannotBeFinalizedWithIncorrectProofValidation() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 1 ether to Alice and Bob
+        vm.deal(address(aliceWallet), 1 ether);
+        vm.deal(address(bobWallet), 1 ether);
+
+        // Create new one-time subscription with 1 ether payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            ZERO_ADDRESS,
+            1 ether,
+            aliceWallet,
+            // Specify optimistic prover
+            address(OPTIMISTIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether);
+
+        // Allow Bob to spend bob wallet balance up to 1 ether
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), ZERO_ADDRESS, 1 ether);
+
+        // Verify initial balances and allowances
+        assertEq(aliceWallet.balance, 1 ether);
+        assertEq(bobWallet.balance, 1 ether);
+
+        // Setup optimistic prover approved token + fee (0.1 ether)
+        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+
+        // Execute response fulfillment from Bob
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Attempt to fulfill with incorrect proof validation data
+        vm.expectRevert(Coordinator.ProofRequestNotFound.selector);
+        OPTIMISTIC_PROVER.mockDeliverProof(subId + 1, 1, address(BOB), true);
+    }
+
     /// @notice Subscription can be fulfilled with payment when proof validates correctly
     function testLazySubscriptionWithProofCanBeFulfilledWhenProofValidatesCorrectlyInTime() public {
         // Create new wallets
@@ -1478,6 +1524,72 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
         // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.00511 ether) = 0.10731 ether
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+
+        // Fast forward 1 day and trigger optimistic response with valid: true
+        vm.warp(1 days);
+        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), true);
+
+        // Assert new balances
+        // Alice --> 0 ether
+        assertEq(aliceWallet.balance, 0 ether);
+        assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
+        // Bob --> 1 ether + 7978e14 ether
+        // Bob --> allowance: 1 ether
+        assertEq(bobWallet.balance, 17_978e14);
+        assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
+        // Prover, protocol stay same
+        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
+    }
+
+    /// @notice Subscription can be fulfilled when proof validates correctly, even after subscription is cancelled
+    function testSubscriptionCanBeFulfilledEvenWhenSubscriptionIsCancelled() public {
+        // Create new wallets
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+        address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
+
+        // Mint 1 ether to Alice and Bob
+        vm.deal(address(aliceWallet), 1 ether);
+        vm.deal(address(bobWallet), 1 ether);
+
+        // Create new one-time subscription with 1 ether payout
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID,
+            MOCK_INPUT,
+            1,
+            ZERO_ADDRESS,
+            1 ether,
+            aliceWallet,
+            // Specify optimistic prover
+            address(OPTIMISTIC_PROVER)
+        );
+
+        // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
+        vm.prank(address(ALICE));
+        Wallet(payable(aliceWallet)).approve(address(CALLBACK), ZERO_ADDRESS, 1 ether);
+
+        // Allow Bob to spend bob wallet balance up to 1 ether
+        vm.prank(address(BOB));
+        Wallet(payable(bobWallet)).approve(address(BOB), ZERO_ADDRESS, 1 ether);
+
+        // Verify initial balances and allowances
+        assertEq(aliceWallet.balance, 1 ether);
+        assertEq(bobWallet.balance, 1 ether);
+
+        // Setup optimistic prover approved token + fee (0.1 ether)
+        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+
+        // Execute response fulfillment from Bob
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
+
+        // Cancel subscription
+        vm.prank(address(CALLBACK));
+        COORDINATOR.cancelSubscription(subId);
+
+        // Assert subscription is cancelled
+        Subscription memory sub = COORDINATOR.getSubscription(subId);
+        assertEq(sub.owner, address(0));
 
         // Fast forward 1 day and trigger optimistic response with valid: true
         vm.warp(1 days);
