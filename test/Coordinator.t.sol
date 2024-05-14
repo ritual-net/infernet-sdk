@@ -395,8 +395,8 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         SUBSCRIPTION.cancelMockSubscription(1);
     }
 
-    /// @notice Cannot cancel a subscription that has already been cancelled
-    function testCannotCancelCancelledSubscription() public {
+    /// @notice Can cancel a subscription that has already been cancelled
+    function testCanCancelCancelledSubscription() public {
         // Create and cancel subscription
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
@@ -404,7 +404,6 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         SUBSCRIPTION.cancelMockSubscription(subId);
 
         // Attempt to cancel subscription again
-        vm.expectRevert(Coordinator.NotSubscriptionOwner.selector);
         SUBSCRIPTION.cancelMockSubscription(subId);
     }
 
@@ -1543,7 +1542,7 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
     }
 
     /// @notice Subscription can be fulfilled when proof validates correctly, even after subscription is cancelled
-    function testSubscriptionCanBeFulfilledEvenWhenSubscriptionIsCancelled() public {
+    function testPaymentCanBeFulfilledEvenWhenSubscriptionIsCancelled() public {
         // Create new wallets
         address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
         address bobWallet = WALLET_FACTORY.createWallet(address(BOB));
@@ -1589,7 +1588,7 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Assert subscription is cancelled
         Subscription memory sub = COORDINATOR.getSubscription(subId);
-        assertEq(sub.owner, address(0));
+        assertEq(sub.activeAt, type(uint32).max);
 
         // Fast forward 1 day and trigger optimistic response with valid: true
         vm.warp(1 days);

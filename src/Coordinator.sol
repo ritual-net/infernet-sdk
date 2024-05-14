@@ -27,11 +27,11 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 struct Subscription {
     /// @notice Subscription owner + recipient
     /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
-    /// @dev Default initializes to `address(0)`
     address owner;
     /// @notice Timestamp when subscription is first active and an off-chain Infernet node can respond
     /// @dev When `period == 0`, the subscription is immediately active
     /// @dev When `period > 0`, subscription is active at `createdAt + period`
+    /// @dev Cancelled subscriptions update `activeAt` to `type(uint32).max` effectively restricting all future submissions
     uint32 activeAt;
     /// @notice Time, in seconds, between each subscription interval
     /// @dev At worst, assuming subscription occurs once/year << uint32
@@ -77,24 +77,10 @@ struct ProofRequest {
     /// @notice Proof request expiration
     /// @dev Set to block.timestamp (time of proof request initiation) + 1 week window
     uint32 expiry;
-    /// @notice Prover contract
-    /// @dev While this is available via the `Subscription` struct (`prover`) we cannot rely on it in case a malicious consumer cancels their subscription
-    address prover;
-    /// @notice Payment token
-    /// @dev While this is available via the `Subscription` struct (`paymentToken`) we cannot rely on it in case a malicious consumer cancels their subscription
-    address paymentToken;
     /// @notice Address of node `Wallet` which has escrowed `paymentAmount` `paymentToken`
     Wallet nodeWallet;
-    /// @notice Amount of `paymentToken` escrowed by the node `Wallet` as slashable payment to `consumerWallet`
-    /// @dev While this is available via the `Subscription` struct (`paymentAmount`) we cannot rely on it in case a malicious consumer cancels their subscription
-    uint256 nodeEscrowed;
-    /// @notice Owner of subscription requesting proof
-    /// @dev Necessary to store in case `Subscription` struct is deleted due to cancellation + appropriately update `Wallet` allowances
-    address consumer;
-    /// @notice Address of consumer `Wallet` which has escrowed `consumerEscrowed` `paymentToken`
-    /// @dev While this is available via the `Subscription` struct we cannot rely on it in case a malicious consumer cancels their subscription
-    Wallet consumerWallet;
     /// @notice Amount of `paymentToken` escrowed by the consumer as successful payment to `nodeWallet`
+    /// @dev Because provers can update their fees, we have to keep an at-time reference to escrowed amount rather than in-memory re-calculate
     uint256 consumerEscrowed;
 }
 
@@ -307,6 +293,7 @@ contract Coordinator is ReentrancyGuard {
 
     /// @notice Cancel a subscription
     /// @dev Must be called by `subscriptions[subscriptionId].owner`
+    /// @dev Cancels subscription by setting `Subscription` `activeAt` to maximum (technically, de-activating)
     /// @param subscriptionId subscription ID to cancel
     function cancelSubscription(uint32 subscriptionId) external {
         // Throw if owner of subscription is not caller
@@ -314,10 +301,14 @@ contract Coordinator is ReentrancyGuard {
             revert NotSubscriptionOwner();
         }
 
-        // Nullify subscription
-        delete subscriptions[subscriptionId];
+        // Set `activeAt` to max type(uint32)
+        // While we could delete the subscription itself (and in previous versions of Infernet this was done),
+        // it is net cheaper on average to simply invalidate via `activeAt` instead, to allow use of `Subscription`
+        // parameters during prover proof validation payout (since that path is to called with greater frequency)
+        subscriptions[subscriptionId].activeAt = type(uint32).max;
 
         // Emit cancellation
+        // Event can be emitted more than once if cancelling already cancelled subscription
         emit SubscriptionCancelled(subscriptionId);
     }
 
@@ -480,12 +471,7 @@ contract Coordinator is ReentrancyGuard {
                 // Store new proof request
                 proofRequests[key] = ProofRequest({
                     expiry: uint32(block.timestamp) + 1 weeks,
-                    paymentToken: subscription.paymentToken,
-                    prover: subscription.prover,
                     nodeWallet: node,
-                    nodeEscrowed: subscription.paymentAmount,
-                    consumer: subscription.owner,
-                    consumerWallet: consumer,
                     consumerEscrowed: tokenAvailable
                 });
 
@@ -544,35 +530,36 @@ contract Coordinator is ReentrancyGuard {
             revert ProofRequestNotFound();
         }
 
+        // Collect associated subscription
+        Subscription memory sub = subscriptions[subscriptionId];
+
         // Unescrow wallets
-        request.nodeWallet.cUnlock(node, request.paymentToken, request.nodeEscrowed);
-        request.consumerWallet.cUnlock(request.consumer, request.paymentToken, request.consumerEscrowed);
+        request.nodeWallet.cUnlock(node, sub.paymentToken, sub.paymentAmount);
+        Wallet(sub.wallet).cUnlock(sub.owner, sub.paymentToken, request.consumerEscrowed);
 
         // If proof validation period is still active
         if (block.timestamp < request.expiry) {
             // If caller is not prover, revert
-            if (request.prover != msg.sender) {
+            if (sub.prover != msg.sender) {
                 revert UnauthorizedProver();
             }
 
             // If proof is valid
             if (valid) {
                 // Process payment to node
-                request.consumerWallet.cTransfer(
-                    request.consumer, request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+                Wallet(sub.wallet).cTransfer(
+                    sub.owner, sub.paymentToken, address(request.nodeWallet), request.consumerEscrowed
                 );
                 // Else, if proof is not valid
             } else {
                 // Slash node
-                request.nodeWallet.cTransfer(
-                    node, request.paymentToken, address(request.consumerWallet), request.nodeEscrowed
-                );
+                request.nodeWallet.cTransfer(node, sub.paymentToken, sub.wallet, sub.paymentAmount);
             }
             // Else, if proof validation period expired
         } else {
             // Process payment to node
-            request.consumerWallet.cTransfer(
-                request.consumer, request.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+            Wallet(sub.wallet).cTransfer(
+                sub.owner, sub.paymentToken, address(request.nodeWallet), request.consumerEscrowed
             );
         }
 

@@ -94,10 +94,10 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     function cancelMockSubscription(uint32 subscriptionId) external {
         _cancelComputeSubscription(subscriptionId);
 
-        // Get subscription owner & assert zeroed-out
-        address expected = address(0);
+        // Assert maxxed out subscription `activeAt`
+        uint32 expected = type(uint32).max;
         Subscription memory actual = COORDINATOR.getSubscription(subscriptionId);
-        assertEq(actual.owner, expected);
+        assertEq(actual.activeAt, expected);
     }
 
     /*//////////////////////////////////////////////////////////////

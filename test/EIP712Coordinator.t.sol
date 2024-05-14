@@ -447,7 +447,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Assert cancelled status
         Subscription memory actual = COORDINATOR.getSubscription(1);
-        assertEq(actual.owner, address(0));
+        assertEq(actual.activeAt, type(uint32).max);
     }
 
     /// @notice Can delegated deliver compute reponse, while creating new subscription

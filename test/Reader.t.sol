@@ -136,20 +136,31 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[i].prover, address(uint160(i + 1)));
         }
 
-        // Check cancelled + non-existent subscription
-        for (uint256 i = 3; i < 5; i++) {
-            assertEq(read[i].owner, address(0));
-            assertEq(read[i].activeAt, 0);
-            assertEq(read[i].period, 0);
-            assertEq(read[i].frequency, 0);
-            assertEq(read[i].redundancy, 0);
-            assertEq(read[i].containerId, bytes32(0));
-            assertEq(read[i].lazy, false);
-            assertEq(read[i].paymentToken, address(0));
-            assertEq(read[i].paymentAmount, 0);
-            assertEq(read[i].wallet, address(0));
-            assertEq(read[i].prover, address(0));
-        }
+        // Check cancelled subscription
+        assertEq(read[3].owner, address(SUBSCRIPTION));
+        assertEq(read[3].activeAt, type(uint32).max); // Cancelled
+        assertEq(read[3].period, 1 minutes);
+        assertEq(read[3].frequency, 4);
+        assertEq(read[3].redundancy, 1);
+        assertEq(read[3].containerId, HASHED_MOCK_CONTAINER_ID);
+        assertEq(read[3].lazy, false);
+        assertEq(read[3].paymentToken, address(uint160(4)));
+        assertEq(read[3].paymentAmount, 4);
+        assertEq(read[3].wallet, address(uint160(4)));
+        assertEq(read[3].prover, address(uint160(4)));
+
+        // Check non-existent subscription
+        assertEq(read[4].owner, address(0));
+        assertEq(read[4].activeAt, 0);
+        assertEq(read[4].period, 0);
+        assertEq(read[4].frequency, 0);
+        assertEq(read[4].redundancy, 0);
+        assertEq(read[4].containerId, bytes32(0));
+        assertEq(read[4].lazy, false);
+        assertEq(read[4].paymentToken, address(0));
+        assertEq(read[4].paymentAmount, 0);
+        assertEq(read[4].wallet, address(0));
+        assertEq(read[4].prover, address(0));
     }
 
     /// @notice Can read cancelled or non-existent subscription
@@ -171,20 +182,31 @@ contract ReaderTest is Test, CoordinatorConstants {
         // Assert batch length
         assertEq(read.length, 2);
 
-        // Assert subscription parameters are nullified
-        for (uint256 i = 0; i < read.length; i++) {
-            assertEq(read[0].owner, address(0));
-            assertEq(read[0].activeAt, 0);
-            assertEq(read[0].period, 0);
-            assertEq(read[0].frequency, 0);
-            assertEq(read[0].redundancy, 0);
-            assertEq(read[0].containerId, bytes32(0));
-            assertEq(read[0].lazy, false);
-            assertEq(read[0].paymentToken, address(0));
-            assertEq(read[0].paymentAmount, 0);
-            assertEq(read[0].wallet, address(0));
-            assertEq(read[0].prover, address(0));
-        }
+        // Assert cancelled subscription
+        assertEq(read[0].owner, address(SUBSCRIPTION));
+        assertEq(read[0].activeAt, type(uint32).max);
+        assertEq(read[0].period, 1 minutes);
+        assertEq(read[0].frequency, 3);
+        assertEq(read[0].redundancy, 1);
+        assertEq(read[0].containerId, HASHED_MOCK_CONTAINER_ID);
+        assertEq(read[0].lazy, false);
+        assertEq(read[0].paymentToken, address(1));
+        assertEq(read[0].paymentAmount, 123);
+        assertEq(read[0].wallet, address(2));
+        assertEq(read[0].prover, address(3));
+
+        // Assert non-existent subscription
+        assertEq(read[1].owner, address(0));
+        assertEq(read[1].activeAt, 0);
+        assertEq(read[1].period, 0);
+        assertEq(read[1].frequency, 0);
+        assertEq(read[1].redundancy, 0);
+        assertEq(read[1].containerId, bytes32(0));
+        assertEq(read[1].lazy, false);
+        assertEq(read[1].paymentToken, address(0));
+        assertEq(read[1].paymentAmount, 0);
+        assertEq(read[1].wallet, address(0));
+        assertEq(read[1].prover, address(0));
     }
 
     /// @notice Cannot read batch subscriptons where `endId` < `startId`
