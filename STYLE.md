@@ -26,13 +26,13 @@ Sort imports by length.
 
 ```solidity
 // Bad
-import {Manager} from "./Manager.sol";
+import {Registry} from "./Registry.sol";
 import {Token} from "./Token.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 
 // Good
 import {Token} from "./Token.sol";
-import {Manager} from "./Manager.sol";
+import {Registry} from "./Registry.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 ```
 
@@ -55,6 +55,7 @@ Ordering of sections in contract goes:
 13. Constructor
 14. Internal functions
 15. External functions
+16. Fallback function
 
 Sections are delineated using headers generated from [transmissions11/headers](https://github.com/transmissions11/headers).
 

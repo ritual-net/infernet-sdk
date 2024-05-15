@@ -25,13 +25,16 @@ contract Deploy is Script {
         uint256 initialNonce = vm.getNonce(deployerAddress);
 
         // Deploy contracts via LibDeploy
-        (Registry registry, EIP712Coordinator coordinator, Inbox inbox, Reader reader) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox, Reader reader, Fee fee, WalletFactory walletFactory) = LibDeploy.deployContracts(initialNonce, deployerAddress, 500);
 
         // Log deployed contracts
+        console.log("Using protocol fee: 5%");
         console.log("Deployed Registry: ", address(registry));
         console.log("Deployed EIP712Coordinator: ", address(coordinator));
         console.log("Deployed Inbox: ", address(inbox));
         console.log("Deployed Reader: ", address(reader));
+        console.log("Deployed Fee: ", address(fee));
+        console.log("Deployed WalletFactory: ", address(walletFactory));
 
         // Execute
         vm.stopBroadcast();

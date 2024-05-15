@@ -19,6 +19,12 @@ contract Registry {
     /// @notice Reader address
     address public immutable READER;
 
+    /// @notice Fee registry address
+    address public immutable FEE;
+
+    /// @notice Wallet factory address
+    address public immutable WALLET_FACTORY;
+
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
@@ -28,9 +34,13 @@ contract Registry {
     /// @param coordinator Coordinator address
     /// @param inbox Inbox address
     /// @param reader Reader address
-    constructor(address coordinator, address inbox, address reader) {
+    /// @param fee Fee registry address
+    /// @param walletFactory Wallet factory address
+    constructor(address coordinator, address inbox, address reader, address fee, address walletFactory) {
         COORDINATOR = coordinator;
         INBOX = inbox;
         READER = reader;
+        FEE = fee;
+        WALLET_FACTORY = walletFactory;
     }
 }

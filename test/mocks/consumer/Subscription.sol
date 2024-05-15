@@ -45,12 +45,14 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs
     function createMockSubscription(
         string calldata containerId,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
         uint16 redundancy,
-        bool lazy
+        bool lazy,
+        address paymentToken,
+        uint256 paymentAmount,
+        address wallet,
+        address prover
     ) external returns (uint32) {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
@@ -58,8 +60,9 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         uint32 exepectedSubscriptionID = COORDINATOR.id();
 
         // Create new subscription
-        uint32 actualSubscriptionID =
-            _createComputeSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy, lazy);
+        uint32 actualSubscriptionID = _createComputeSubscription(
+            containerId, frequency, period, redundancy, lazy, paymentToken, paymentAmount, wallet, prover
+        );
 
         // Assert ID expectations
         assertEq(exepectedSubscriptionID, actualSubscriptionID);
@@ -70,13 +73,15 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         // Assert subscription storage
         assertEq(sub.activeAt, currentTimestamp + period);
         assertEq(sub.owner, address(this));
-        assertEq(sub.maxGasPrice, maxGasPrice);
         assertEq(sub.redundancy, redundancy);
-        assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, frequency);
         assertEq(sub.period, period);
         assertEq(sub.containerId, keccak256(abi.encode(containerId)));
         assertEq(sub.lazy, lazy);
+        assertEq(sub.paymentToken, paymentToken);
+        assertEq(sub.paymentAmount, paymentAmount);
+        assertEq(sub.wallet, wallet);
+        assertEq(sub.prover, prover);
 
         // Explicitly return subscription ID
         return actualSubscriptionID;
@@ -89,10 +94,10 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     function cancelMockSubscription(uint32 subscriptionId) external {
         _cancelComputeSubscription(subscriptionId);
 
-        // Get subscription owner & assert zeroed-out
-        address expected = address(0);
+        // Assert maxxed out subscription `activeAt`
+        uint32 expected = type(uint32).max;
         Subscription memory actual = COORDINATOR.getSubscription(subscriptionId);
-        assertEq(actual.owner, expected);
+        assertEq(actual.activeAt, expected);
     }
 
     /*//////////////////////////////////////////////////////////////

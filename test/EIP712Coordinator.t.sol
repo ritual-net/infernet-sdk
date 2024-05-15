@@ -7,6 +7,7 @@ import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
+import {MockProtocol} from "./mocks/MockProtocol.sol";
 import {Allowlist} from "../src/pattern/Allowlist.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
@@ -20,21 +21,11 @@ import {MockAllowlistDelegatorSubscriptionConsumer} from "./mocks/consumer/Allow
 /// @notice Tests EIP712Coordinator implementation
 contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents {
     /*//////////////////////////////////////////////////////////////
-                               CONSTANTS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Cold cost of `CallbackConsumer.rawReceiveCompute`
-    /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    /// @dev Overriden from CoordinatorConstants since state change order forces this to cost ~100 wei more
-    uint32 private constant CALLBACK_COST = COLD_EAGER_DELIVERY_COST + 100 wei;
-
-    /// @notice Cold cost of lazy-`SubscriptionConsumer.rawReceiveCompute`
-    /// @dev Inputs: (uint32, uint32, uint16, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF)
-    uint32 private constant SUBSCRIPTION_COST = COLD_LAZY_DELIVERY_COST + 100 wei;
-
-    /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Mock protocol wallet
+    MockProtocol internal PROTOCOL;
 
     /// @notice EIP712Coordinator
     EIP712Coordinator private COORDINATOR;
@@ -74,9 +65,16 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     //////////////////////////////////////////////////////////////*/
 
     function setUp() public {
-        // Initialize contracts
+        // Create mock protocol wallet
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,) = LibDeploy.deployContracts(initialNonce);
+        address mockProtocolWalletAddress = vm.computeCreateAddress(address(this), initialNonce + 6);
+
+        // Initialize contracts
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,,) =
+            LibDeploy.deployContracts(initialNonce, mockProtocolWalletAddress, MOCK_PROTOCOL_FEE);
+
+        // Initialize mock protocol wallet
+        PROTOCOL = new MockProtocol(registry);
 
         // Assign to internal
         COORDINATOR = coordinator;
@@ -117,14 +115,15 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         return Subscription({
             activeAt: uint32(block.timestamp),
             owner: address(CALLBACK),
-            maxGasPrice: 1 gwei,
             redundancy: 1,
-            maxGasLimit: CALLBACK_COST + uint32(COORDINATOR.DELEGATEE_OVERHEAD_CREATE_WEI())
-                + uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()),
             frequency: 1,
             period: 0,
             containerId: HASHED_MOCK_CONTAINER_ID,
-            lazy: false
+            lazy: false,
+            prover: payable(NO_PROVER),
+            paymentAmount: 0,
+            paymentToken: NO_PAYMENT_TOKEN,
+            wallet: payable(NO_WALLET)
         });
     }
 
@@ -162,19 +161,22 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription
-        (uint32 subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
+        uint32 subscriptionId = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
         assertEq(subscriptionId, id);
 
         // Assert subscription data is correctly stored
         Subscription memory actual = COORDINATOR.getSubscription(id);
         assertEq(sub.activeAt, actual.activeAt);
         assertEq(sub.owner, actual.owner);
-        assertEq(sub.maxGasPrice, actual.maxGasPrice);
         assertEq(sub.redundancy, actual.redundancy);
-        assertEq(sub.maxGasLimit, actual.maxGasLimit);
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
+        assertEq(sub.lazy, actual.lazy);
+        assertEq(sub.prover, actual.prover);
+        assertEq(sub.paymentToken, actual.paymentToken);
+        assertEq(sub.paymentAmount, actual.paymentAmount);
+        assertEq(sub.wallet, actual.wallet);
 
         // Assert state is correctly updated
         if (nonce > maxSubscriberNonce) {
@@ -254,19 +256,22 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription
-        (uint32 subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
+        uint32 subscriptionId = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
         assertEq(subscriptionId, 1);
 
         // Assert subscription data is correctly stored
         Subscription memory actual = COORDINATOR.getSubscription(1);
         assertEq(sub.activeAt, actual.activeAt);
         assertEq(sub.owner, actual.owner);
-        assertEq(sub.maxGasPrice, actual.maxGasPrice);
         assertEq(sub.redundancy, actual.redundancy);
-        assertEq(sub.maxGasLimit, actual.maxGasLimit);
         assertEq(sub.frequency, actual.frequency);
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
+        assertEq(sub.lazy, actual.lazy);
+        assertEq(sub.prover, actual.prover);
+        assertEq(sub.paymentToken, actual.paymentToken);
+        assertEq(sub.paymentAmount, actual.paymentAmount);
+        assertEq(sub.wallet, actual.wallet);
 
         // Assert state is correctly updated
         assertEq(COORDINATOR.maxSubscriberNonce(address(CALLBACK)), 0);
@@ -311,7 +316,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription
-        (uint32 subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
+        uint32 subscriptionId = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
         assertEq(subscriptionId, 1);
 
         // Update signer to backup delegatee
@@ -319,7 +324,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(CALLBACK.getSigner(), BACKUP_DELEGATEE_ADDRESS);
 
         // Creating subscription should return existing subscription (ID: 1)
-        (subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
+        subscriptionId = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
         assertEq(subscriptionId, 1);
     }
 
@@ -341,7 +346,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription
-        (uint32 subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
+        uint32 subscriptionId = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
         assertEq(subscriptionId, 1);
 
         // Create second dummy subscription and set redundancy to 5 (identifier param)
@@ -356,7 +361,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (v, r, s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription (notice, with the same nonce)
-        (subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
+        subscriptionId = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
 
         // Assert that we are instead simply returned the existing subscription
         assertEq(subscriptionId, 1);
@@ -373,7 +378,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (v, r, s) = vm.sign(BACKUP_DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription (notice, with the same nonce)
-        (subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
+        subscriptionId = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
 
         // Assert that we are instead simply returned the existing subscription
         assertEq(subscriptionId, 1);
@@ -390,7 +395,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
         bytes32 message = getMessage(nonce, expiry, sub);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
-        (uint32 subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
+        uint32 subscriptionId = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
         assertEq(subscriptionId, 1);
 
         // Ensure maximum subscriber nonce is 10
@@ -402,7 +407,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         expiry = uint32(block.timestamp) + 30 minutes;
         message = getMessage(nonce, expiry, sub);
         (v, r, s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
-        (subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
+        subscriptionId = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
         assertEq(subscriptionId, 2);
 
         // Ensure maximum subscriber nonce is still 10
@@ -414,7 +419,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         expiry = uint32(block.timestamp) + 30 minutes;
         message = getMessage(nonce, expiry, sub);
         (v, r, s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
-        (subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
+        subscriptionId = COORDINATOR.createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
 
         // Ensure that instead of a new subscription, existing subscription (ID: 1) is returned
         assertEq(subscriptionId, 1);
@@ -427,8 +432,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = createMockSubscriptionEIP712(0);
 
         // Immediately collect subscriptionId without any signature verifications
-        (uint32 expectedSubscriptionId,) =
-            COORDINATOR.createSubscriptionDelegatee(0, 0, getMockSubscription(), 0, "", "");
+        uint32 expectedSubscriptionId = COORDINATOR.createSubscriptionDelegatee(0, 0, getMockSubscription(), 0, "", "");
         assertEq(subscriptionId, expectedSubscriptionId);
     }
 
@@ -443,7 +447,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Assert cancelled status
         Subscription memory actual = COORDINATOR.getSubscription(1);
-        assertEq(actual.owner, address(0));
+        assertEq(actual.activeAt, type(uint32).max);
     }
 
     /// @notice Can delegated deliver compute reponse, while creating new subscription
@@ -467,7 +471,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Get response
@@ -494,8 +498,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Modify dummy subscription to be lazy
         sub.owner = address(SUBSCRIPTION);
-        sub.maxGasLimit = SUBSCRIPTION_COST + uint32(COORDINATOR.DELEGATEE_OVERHEAD_CREATE_WEI())
-            + uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI());
         sub.lazy = true;
 
         // Generate signature expiry
@@ -511,7 +513,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Get response
@@ -560,16 +562,18 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Attempt to deliver from Bob via delegatee
         vm.expectRevert(Coordinator.IntervalCompleted.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
+        );
 
         // Attempt to delivery from Bob direct
         vm.expectRevert(Coordinator.IntervalCompleted.selector);
-        BOB.deliverCompute(subscriptionId, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverCompute(subscriptionId, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
     }
 
     /// @notice Can delegated deliver compute response for existing subscription
@@ -595,7 +599,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint32 subscriptionId = 1;
         uint32 deliveryInterval = 1;
         ALICE.deliverComputeDelegatee(
-            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
         );
 
         // Ensure subscription completion is tracked
@@ -603,7 +607,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(COORDINATOR.nodeResponded(key), true);
 
         // Deliver from Bob
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
+        );
 
         // Ensure subscription completion is tracked
         key = keccak256(abi.encode(subscriptionId, deliveryInterval, address(BOB)));
@@ -611,70 +617,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Expect revert if trying to deliver again
         vm.expectRevert(Coordinator.IntervalCompleted.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-    }
-
-    /// @notice Cannot deliver subscription where gas limit is too low
-    function testCannotDeliverEIP712SubscriptionWhereGasLimitTooLow() public {
-        // Starting nonce
-        uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
-
-        // Create new dummy subscription
-        Subscription memory sub = getMockSubscription();
-
-        // Purposefully reduce gasLimit of subscription down ~200 gwei
-        sub.maxGasLimit -= 200;
-
-        // Generate signature expiry
-        uint32 expiry = uint32(block.timestamp) + 30 minutes;
-
-        // Get EIP-712 typed message
-        bytes32 message = getMessage(nonce, expiry, sub);
-
-        // Sign message from delegatee private key
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
-
-        // Create subscription and deliver response, expecting an out of gas revert
-        vm.expectRevert(abi.encodeWithSelector(Coordinator.GasLimitExceeded.selector));
-        ALICE.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-    }
-
-    /// @notice Can deliver compute response for already created subscription with reduced gas limit
-    function testDeliverReducedGasCostSubscriptionCachedSubscription() public {
-        // Create new subscription with redundancy = 2
-        Subscription memory sub = getMockSubscription();
-        sub.redundancy = 2;
-
-        // Generate signature expiry
-        uint32 expiry = uint32(block.timestamp) + 30 minutes;
-
-        // Get signed data
-        uint32 nonce = COORDINATOR.maxSubscriberNonce(address(CALLBACK));
-        bytes32 message = getMessage(nonce, expiry, sub);
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
-
-        // Manually verifying the callstack is useful here to ensure that the overhead gas is being properly set
-        // Measure direct delivery for creation + delivery
-        uint256 inputOverhead = 15_000 wei;
-        uint256 gasExpected = CALLBACK_COST + COORDINATOR.DELEGATEE_OVERHEAD_CREATE_WEI()
-            + COORDINATOR.DELIVERY_OVERHEAD_WEI() + inputOverhead;
-        uint256 startingGas = gasleft();
-        ALICE.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-        uint256 endingGas = gasleft();
-        uint256 gasUsed = startingGas - endingGas;
-
-        // Measure direct delivery for cached creation + delivery
-        uint256 gasExpectedCached =
-            CALLBACK_COST + COORDINATOR.DELEGATEE_OVERHEAD_CACHED_WEI() + COORDINATOR.DELIVERY_OVERHEAD_WEI();
-        startingGas = gasleft();
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-        endingGas = gasleft();
-        uint256 gasUsedCached = startingGas - endingGas;
-
-        // Assert in ~approximate range (+/- 20K gas, actually copying calldata into memory is expensive)
-        uint256 delta = 20_000 wei;
-        assertApproxEqAbs(gasExpected, gasUsed, delta);
-        assertApproxEqAbs(gasExpectedCached, gasUsedCached, delta);
+        BOB.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET
+        );
     }
 
     /// @notice Can deliver delegated subscription response as an allowed node
@@ -686,7 +631,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         Subscription memory sub = getMockSubscription();
         sub.owner = address(ALLOWLIST_SUBSCRIPTION);
         sub.redundancy = 2;
-        sub.maxGasLimit = sub.maxGasLimit + ALLOWLIST_READ_COST;
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -698,11 +642,11 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
 
         // Create subscription and deliver response, via deliverComputeDelegatee (via allowed node Alice)
-        ALICE.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Attempt but fail to deliver response from Bob (unallowed node)
         vm.expectRevert(Allowlist.NodeNotAllowed.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
     }
 
     /// @notice Creating new subscription as unallowed node fails upon delivering response
@@ -713,7 +657,6 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Create new dummy subscription
         Subscription memory sub = getMockSubscription();
         sub.owner = address(ALLOWLIST_SUBSCRIPTION);
-        sub.maxGasLimit = sub.maxGasLimit + ALLOWLIST_READ_COST;
 
         // Generate signature expiry
         uint32 expiry = uint32(block.timestamp) + 30 minutes;
@@ -727,7 +670,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Create subscription and deliver response via Bob
         // Expect failure given unallowed node causes atomic tx reversion
         vm.expectRevert(Allowlist.NodeNotAllowed.selector);
-        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Ensure subscription was not created (no serial nonce increment from subscription creation)
         uint32 finalNonce = COORDINATOR.maxSubscriberNonce(address(ALLOWLIST_SUBSCRIPTION));

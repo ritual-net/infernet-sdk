@@ -13,12 +13,12 @@ library LibSign {
 
     /// @notice EIP-712 Subscription typeHash
     bytes32 private constant SUBSCRIPTION_TYPEHASH = keccak256(
-        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bool lazy)"
+        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address prover,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /// @notice EIP-712 DelegateSubscription typeHash
     bytes32 private constant DELEGATE_SUBSCRIPTION_TYPEHASH = keccak256(
-        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,bytes32 containerId,bool lazy)"
+        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address prover,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -59,10 +59,12 @@ library LibSign {
                 sub.period,
                 sub.frequency,
                 sub.redundancy,
-                sub.maxGasPrice,
-                sub.maxGasLimit,
                 sub.containerId,
-                sub.lazy
+                sub.lazy,
+                sub.prover,
+                sub.paymentAmount,
+                sub.paymentToken,
+                sub.wallet
             )
         );
     }

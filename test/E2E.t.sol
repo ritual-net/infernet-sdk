@@ -31,7 +31,7 @@ contract BalanceScaleTest is Test {
     function setUp() public {
         // Deploy contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry,,,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry,,,,,) = LibDeploy.deployContracts(initialNonce, address(0), 0);
 
         // Pre-predict expected address of contract(BALANCE_SCALE)
         initialNonce = vm.getNonce(address(this));
@@ -112,7 +112,9 @@ contract BalanceScaleTest is Test {
         bytes memory input = abi.encode(hashedInput);
 
         // Submit compute container response from Alice w/ correct proof
-        ALICE.deliverCompute(subscriptionId, 1, input, "really,any,response,here,we,read,true,output,from,proof", proof);
+        ALICE.deliverCompute(
+            subscriptionId, 1, input, "really,any,response,here,we,read,true,output,from,proof", proof, address(0)
+        );
 
         // Assert actual output conforms to expected output
         int256 actualOutput = BALANCE_SCALE.predictions(subscriptionId);

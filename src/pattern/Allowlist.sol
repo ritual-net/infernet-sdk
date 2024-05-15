@@ -29,6 +29,7 @@ abstract contract Allowlist {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Allow only nodes in the `allowedNodes` set
+    /// @param node calling node to checkin `allowedNodes` set
     modifier onlyAllowedNode(address node) {
         if (!allowedNodes[node]) {
             revert NodeNotAllowed();
@@ -72,7 +73,7 @@ abstract contract Allowlist {
 
     /// @notice Check whether a `node` is allowed
     /// @param node address to check for set inclusion
-    /// @return true if node is in Allowlist, else false
+    /// @return true if node is in Allowlist & its status is set to `true` (allowed), else false
     function isAllowedNode(address node) external view returns (bool) {
         return allowedNodes[node];
     }

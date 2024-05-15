@@ -43,9 +43,10 @@ contract MockNode is StdAssertions {
         uint32 deliveryInterval,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        address nodeWallet
     ) external {
-        COORDINATOR.deliverCompute(subscriptionId, deliveryInterval, input, output, proof);
+        COORDINATOR.deliverCompute(subscriptionId, deliveryInterval, input, output, proof, nodeWallet);
     }
 
     /// @dev Wrapper function (calling Coordinator with msg.sender == node)
@@ -59,9 +60,12 @@ contract MockNode is StdAssertions {
         uint32 deliveryInterval,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        address nodeWallet
     ) external {
-        COORDINATOR.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, deliveryInterval, input, output, proof);
+        COORDINATOR.deliverComputeDelegatee(
+            nonce, expiry, sub, v, r, s, deliveryInterval, input, output, proof, nodeWallet
+        );
     }
 
     /// @dev Wrapper function (calling Inbox with msg.sender == node)

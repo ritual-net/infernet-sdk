@@ -29,9 +29,11 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
     function createMockRequest(
         string memory containerId,
         bytes memory inputs,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
-        uint16 redundancy
+        uint16 redundancy,
+        address paymentToken,
+        uint256 paymentAmount,
+        address wallet,
+        address prover
     ) external returns (uint32) {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
@@ -39,7 +41,8 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         uint32 expectedSubscriptionID = COORDINATOR.id();
 
         // Request off-chain container compute
-        uint32 actualSubscriptionID = _requestCompute(containerId, inputs, maxGasPrice, maxGasLimit, redundancy);
+        uint32 actualSubscriptionID =
+            _requestCompute(containerId, inputs, redundancy, paymentToken, paymentAmount, wallet, prover);
 
         // Assert ID expectations
         assertEq(expectedSubscriptionID, actualSubscriptionID);
@@ -50,13 +53,15 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         // Assert subscription storage
         assertEq(sub.activeAt, currentTimestamp);
         assertEq(sub.owner, address(this));
-        assertEq(sub.maxGasPrice, maxGasPrice);
         assertEq(sub.redundancy, redundancy);
-        assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, 1);
         assertEq(sub.period, 0);
         assertEq(sub.containerId, keccak256(abi.encode(containerId)));
         assertEq(sub.lazy, false);
+        assertEq(sub.paymentToken, paymentToken);
+        assertEq(sub.paymentAmount, paymentAmount);
+        assertEq(sub.wallet, wallet);
+        assertEq(sub.prover, prover);
         assertEq(subscriptionInputs[actualSubscriptionID], inputs);
 
         // Explicitly return subscription ID

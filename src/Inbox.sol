@@ -2,6 +2,7 @@
 pragma solidity ^0.8.4;
 
 import {Registry} from "./Registry.sol";
+import {Coordinated} from "./utility/Coordinated.sol";
 
 /*//////////////////////////////////////////////////////////////
                             PUBLIC STRUCTS
@@ -25,16 +26,10 @@ struct InboxItem {
 
 /// @title Inbox
 /// @notice Optionally stores container compute responses
+/// @dev Inherits `Coordinated` to use `onlyCoordinator` modifier for coordinator-permissioned functions
 /// @dev Allows `Coordinator` to store compute responses for lazy consumption with associated `Subscription`(s)
 /// @dev Allows any address to store compute responses for lazy consumptions without associated `Subscription`(s)
-contract Inbox {
-    /*//////////////////////////////////////////////////////////////
-                               IMMUTABLE
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Coordinator contract address
-    address private immutable COORDINATOR_ADDRESS;
-
+contract Inbox is Coordinated {
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -55,36 +50,12 @@ contract Inbox {
     event NewInboxItem(bytes32 indexed containerId, address indexed node, uint256 index);
 
     /*//////////////////////////////////////////////////////////////
-                                 ERRORS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Thrown by `writeAuthenticated()` if called from non-Coordinator address
-    /// @dev 4-byte signature: `0x9ec853e6`
-    error NotCoordinator();
-
-    /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Allows calls from only the coordinator
-    /// @dev Allows authenticating functions that store `Subscription` responses
-    modifier onlyCoordinator() {
-        if (msg.sender != COORDINATOR_ADDRESS) {
-            revert NotCoordinator();
-        }
-        _;
-    }
-
-    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Initializes new Inbox
     /// @param registry registry contract
-    constructor(Registry registry) {
-        // Collect coordinator address from registry
-        COORDINATOR_ADDRESS = registry.COORDINATOR();
-    }
+    constructor(Registry registry) Coordinated(registry) {}
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL FUNCTIONS

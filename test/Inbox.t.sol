@@ -8,6 +8,7 @@ import {MockNode} from "./mocks/MockNode.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
 import {CoordinatorConstants} from "./Coordinator.t.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
+import {Coordinated} from "../src/utility/Coordinated.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
 
@@ -47,7 +48,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,) = LibDeploy.deployContracts(initialNonce);
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,,) =
+            LibDeploy.deployContracts(initialNonce, address(0), 0);
 
         // Assign to internal
         COORDINATOR = coordinator;
@@ -171,19 +173,21 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         // Create new subscription (replicating callback because frequency = 1)
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
             1,
             1 minutes,
             1,
-            true // lazy
+            true, // lazy
+            NO_PAYMENT_TOKEN,
+            0,
+            NO_WALLET,
+            NO_PROVER
         );
 
         // Deliver subscription from ALICE
         vm.warp(1 minutes);
         vm.expectEmit(address(INBOX));
         emit NewInboxItem(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
-        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Verify output is lazily delivered to subscriber
         DeliveredOutput memory out = SUBSCRIPTION.getDeliveredOutput(subId, 1, 1);
@@ -219,17 +223,19 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         // Create new subscription (replicating callback because frequency = 1)
         uint32 subId = SUBSCRIPTION.createMockSubscription(
             MOCK_CONTAINER_ID,
-            1 gwei,
-            uint32(COORDINATOR.DELIVERY_OVERHEAD_WEI()) + COLD_LAZY_DELIVERY_COST,
             1,
             1 minutes,
             1,
-            true // lazy
+            true, // lazy
+            NO_PAYMENT_TOKEN,
+            0,
+            NO_WALLET,
+            NO_PROVER
         );
 
         // Deliver subscription from ALICE
         vm.warp(1 minutes);
-        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+        ALICE.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, NO_WALLET);
 
         // Verify written data from direct write
         InboxItem memory item = INBOX.read(HASHED_MOCK_CONTAINER_ID, address(ALICE), 0);
@@ -288,7 +294,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
 
         // Attempt to write data to inbox as coordinator
         vm.startPrank(nonCoordinator);
-        vm.expectRevert(Inbox.NotCoordinator.selector);
+        vm.expectRevert(Coordinated.NotCoordinator.selector);
         INBOX.writeViaCoordinator(HASHED_MOCK_CONTAINER_ID, nonCoordinator, 1, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 
@@ -296,7 +302,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     function testNodeCannotCallAuthenticatedWrite() public {
         // Attempt to write data to inbox as ALICE
         vm.startPrank(address(ALICE));
-        vm.expectRevert(Inbox.NotCoordinator.selector);
+        vm.expectRevert(Coordinated.NotCoordinator.selector);
         INBOX.writeViaCoordinator(HASHED_MOCK_CONTAINER_ID, address(ALICE), 1, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
     }
 

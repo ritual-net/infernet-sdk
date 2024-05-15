@@ -9,8 +9,9 @@ import {Coordinator} from "../Coordinator.sol";
 /// @notice Handles receiving container compute responses from Infernet coordinator
 /// @notice Handles exposing container inputs to Infernet nodes via `getContainerInputs()`
 /// @notice Declares internal `INBOX` reference to allow downstream consumers to read from `Inbox`
-/// @dev Contains a single public entrypoint `rawReceiveCompute` callable by only the Infernet coordinator. Once
-///      call origin is verified, parameters are proxied to internal function `_receiveCompute`
+/// @dev Contains a single public entrypoint `rawReceiveCompute` callable only by the Infernet coordinator. Once
+///      msg.sender is verified, parameters are proxied to internal function `_receiveCompute`
+/// @dev Does not inherit `Coordinated` for `rawReceiveCompute` coordinator-permissioned check to keep error scope localized
 abstract contract BaseConsumer {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
