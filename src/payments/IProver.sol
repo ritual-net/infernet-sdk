@@ -16,12 +16,17 @@ interface IProver {
 
     /// @notice Gets proving fee denominated in `token`
     /// @dev Function `isSupportedToken` is called first
+    /// @param token token address
     /// @return proving fee denominated in `token`
     function fee(address token) external view returns (uint256);
 
     /// @notice Request proof validation from prover contract
     /// @dev Prover contract has to call `validateProof` on coordinator after a proof validation request
     /// @dev By this point, prover contract has been paid for proof validation
+    /// @param subscriptionId subscription ID
+    /// @param interval subscription response interval
+    /// @param node response submitting node
+    /// @param proof provided response proof bytes
     function requestProofValidation(uint32 subscriptionId, uint32 interval, address node, bytes calldata proof)
         external;
 

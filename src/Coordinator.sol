@@ -73,6 +73,9 @@ struct Subscription {
 }
 
 /// @notice A ProofRequest is a request made to a prover contract to validate some proof bytes
+/// @dev Tightly-packed struct
+///      - [expiry, nodeWallet]: [32, 160] = 192
+///      - [consumerEscrowed]: [256] = 256
 struct ProofRequest {
     /// @notice Proof request expiration
     /// @dev Set to block.timestamp (time of proof request initiation) + 1 week window
@@ -80,7 +83,7 @@ struct ProofRequest {
     /// @notice Address of node `Wallet` which has escrowed `paymentAmount` `paymentToken`
     Wallet nodeWallet;
     /// @notice Amount of `paymentToken` escrowed by the consumer as successful payment to `nodeWallet`
-    /// @dev Because provers can update their fees, we have to keep an at-time reference to escrowed amount rather than in-memory re-calculate
+    /// @dev Because provers can update their fees, we have to keep a reference to the exact escrowed amount rather than calculate on-demand
     uint256 consumerEscrowed;
 }
 

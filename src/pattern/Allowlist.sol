@@ -29,6 +29,7 @@ abstract contract Allowlist {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Allow only nodes in the `allowedNodes` set
+    /// @param node calling node to checkin `allowedNodes` set
     modifier onlyAllowedNode(address node) {
         if (!allowedNodes[node]) {
             revert NodeNotAllowed();

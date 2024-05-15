@@ -12,7 +12,7 @@ contract Fee is Ownable {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Fee amount, range: [0, 10000] with 2 decimal precision [0.00, 100.00]
-    /// @dev Updating fee past 100.00 is not disallowed and it is up to the `feeRecipient` to ensure bounds
+    /// @dev Updating fee past 100.00 is not disallowed and it is up to the updating caller to ensure bounds
     /// @dev Exposes public getter to allow checking fee
     uint16 public FEE;
 
