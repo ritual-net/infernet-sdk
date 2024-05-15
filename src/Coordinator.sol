@@ -3,7 +3,6 @@ pragma solidity ^0.8.4;
 
 import {Inbox} from "./Inbox.sol";
 import {Registry} from "./Registry.sol";
-import {NodeManager} from "./NodeManager.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 
 /*//////////////////////////////////////////////////////////////
@@ -56,7 +55,7 @@ struct Subscription {
 /// @title Coordinator
 /// @notice Coordination layer between consuming smart contracts and off-chain Infernet nodes
 /// @dev Allows creating and deleting `Subscription`(s)
-/// @dev Allows nodes with `NodeManager.NodeStatus.Active` to deliver subscription outputs via off-chain container compute
+/// @dev Allows any address (a `node`) to deliver susbcription outputs via off-chain container compute
 contract Coordinator {
     /*//////////////////////////////////////////////////////////////
                                CONSTANTS
@@ -67,14 +66,11 @@ contract Coordinator {
     ///      before delivering responses to consumer contracts
     /// @dev A uint16 is sufficient but we are not packing variables so control plane cost is higher because of type
     ///      casting during operations. Thus, we can just stick to uint256
-    uint256 public constant DELIVERY_OVERHEAD_WEI = 58_150 wei;
+    uint256 public constant DELIVERY_OVERHEAD_WEI = 52_850 wei;
 
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
-
-    /// @notice Node manager contract (handles node lifecycle)
-    NodeManager private immutable NODE_MANAGER;
 
     /// @notice Inbox contract (handles lazily storing subscription responses)
     Inbox private immutable INBOX;
@@ -124,10 +120,6 @@ contract Coordinator {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `deliverCompute()` if delivering tx from inactive node (status != `NodeManager.NodeStatus.Active`)
-    /// @dev 4-byte signature: `0x8741cbb8`
-    error NodeNotActive();
-
     /// @notice Thrown by `deliverComputeWithOverhead()` if delivering tx with gasPrice > subscription maxGasPrice
     /// @dev E.g. submitting tx with gas price `10 gwei` when network basefee is `11 gwei`
     /// @dev 4-byte signature: `0x682bad5a`
@@ -169,26 +161,12 @@ contract Coordinator {
     error SubscriptionNotActive();
 
     /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
-
-    /// @notice Allow only callers that are active nodes
-    modifier onlyActiveNode() {
-        if (!NODE_MANAGER.isActiveNode(msg.sender)) {
-            revert NodeNotActive();
-        }
-        _;
-    }
-
-    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Initializes new Coordinator
     /// @param registry registry contract
     constructor(Registry registry) {
-        // Collect node manager contract from registry
-        NODE_MANAGER = NodeManager(registry.NODE_MANAGER());
         // Collect inbox contract from registry
         INBOX = Inbox(registry.INBOX());
     }
@@ -421,8 +399,8 @@ contract Coordinator {
         }
     }
 
-    /// @notice Allows nodes with `NodeManager.NodeStatus.Active` to deliver container compute responses for a subscription
-    /// @dev Re-entering does not work because only active nodes (max 1 response) can call `deliverCompute`
+    /// @notice Allows any address (nodes) to deliver container compute responses for a subscription
+    /// @dev Re-entering does not work because each node can only call `deliverCompute` once per subscription
     /// @dev Re-entering and delivering via a seperate node `msg.sender` works but is ignored in favor of explicit `maxGasLimit`
     /// @dev For containers without succinctly-verifiable proofs, the `proof` field can be repurposed for arbitrary metadata
     /// @dev Enforces an overhead delivery cost of `DELIVERY_OVERHEAD_WEI` and `0` additional overhead
@@ -437,7 +415,7 @@ contract Coordinator {
         bytes calldata input,
         bytes calldata output,
         bytes calldata proof
-    ) external onlyActiveNode {
+    ) external {
         _deliverComputeWithOverhead(subscriptionId, deliveryInterval, input, output, proof, 0);
     }
 }

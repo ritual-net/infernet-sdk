@@ -10,9 +10,6 @@ contract Registry {
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice NodeManager address
-    address public immutable NODE_MANAGER;
-
     /// @notice Coordinator address
     address public immutable COORDINATOR;
 
@@ -28,12 +25,10 @@ contract Registry {
 
     /// @notice Initializes new Registry
     /// @dev Requires pre-computing expected deployed addresses
-    /// @param nodeManager NodeManager address
     /// @param coordinator Coordinator address
     /// @param inbox Inbox address
     /// @param reader Reader address
-    constructor(address nodeManager, address coordinator, address inbox, address reader) {
-        NODE_MANAGER = nodeManager;
+    constructor(address coordinator, address inbox, address reader) {
         COORDINATOR = coordinator;
         INBOX = inbox;
         READER = reader;

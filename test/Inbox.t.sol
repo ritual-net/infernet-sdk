@@ -6,7 +6,6 @@ import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
-import {NodeManager} from "../src/NodeManager.sol";
 import {CoordinatorConstants} from "./Coordinator.t.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
@@ -29,9 +28,6 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     /// @notice EIP712Coordinator
     EIP712Coordinator private COORDINATOR;
 
-    /// @notice NodeManager
-    NodeManager private NODE_MANAGER;
-
     /// @notice Inbox
     Inbox private INBOX;
 
@@ -51,30 +47,15 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry, NodeManager nodeManager, EIP712Coordinator coordinator, Inbox inbox,) =
-            LibDeploy.deployContracts(initialNonce);
+        (Registry registry, EIP712Coordinator coordinator, Inbox inbox,) = LibDeploy.deployContracts(initialNonce);
 
         // Assign to internal
         COORDINATOR = coordinator;
-        NODE_MANAGER = nodeManager;
         INBOX = inbox;
 
         // Initialize mock nodes
         ALICE = new MockNode(registry);
         BOB = new MockNode(registry);
-
-        // For each node
-        MockNode[2] memory nodes = [ALICE, BOB];
-        for (uint256 i = 0; i < 2; i++) {
-            // Select node
-            MockNode node = nodes[i];
-
-            // Activate nodes
-            vm.warp(0);
-            node.registerNode(address(node));
-            vm.warp(NODE_MANAGER.cooldown());
-            node.activateNode();
-        }
 
         // Initialize mock subscription consumer
         SUBSCRIPTION = new MockSubscriptionConsumer(address(registry));
@@ -84,8 +65,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
                                  TESTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Active nodes can store data to inbox
-    function testFuzzActiveNodesCanStoreDataToInbox(
+    /// @notice Nodes can store data to inbox
+    function testFuzzNodesCanStoreDataToInbox(
         address node,
         uint32 timestamp,
         bytes32 containerId,
@@ -93,18 +74,12 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         bytes calldata output,
         bytes calldata proof
     ) public {
-        // Assume address cannot be an already active node (ALICE, BOB)
+        // Assume address cannot be an existing MockNode
         vm.assume(node != address(ALICE));
         vm.assume(node != address(BOB));
 
         // Mock node address for full execution
         vm.startPrank(node);
-
-        // Register and activate node
-        vm.warp(0);
-        NODE_MANAGER.registerNode(node);
-        vm.warp(NODE_MANAGER.cooldown());
-        NODE_MANAGER.activateNode();
 
         // Warp time to specified timestamp
         vm.warp(timestamp);
@@ -133,38 +108,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         assertEq(item.proof, proof);
     }
 
-    /// @notice Inactive nodes cannot store data to inbox
-    function testFuzzInactiveNodesCannotStoreDataToInbox(address node) public {
-        // Assume address cannot be an active node (ALICE, BOB)
-        vm.assume(node != address(ALICE));
-        vm.assume(node != address(BOB));
-
-        // Attempt to write data to inbox as inactive node
-        vm.startPrank(node);
-        vm.expectRevert(Inbox.NodeNotActive.selector);
-        INBOX.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-    }
-
-    /// @notice Registered nodes cannot store data to inbox
-    function testFuzzRegisteredYetNotActiveNodesCannotStoreDataToInbox(address node) public {
-        // Assume address cannot be an active node (ALICE, BOB)
-        vm.assume(node != address(ALICE));
-        vm.assume(node != address(BOB));
-
-        // Mock node address for full execution
-        vm.startPrank(node);
-
-        // Register node
-        vm.warp(0);
-        NODE_MANAGER.registerNode(node);
-
-        // Attempt to write data to inbox as registered node
-        vm.expectRevert(Inbox.NodeNotActive.selector);
-        INBOX.write(HASHED_MOCK_CONTAINER_ID, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
-    }
-
-    /// @notice Active nodes can store data to inbox multiple times with different containerId's
-    function testActiveNodesCanStoreDataMultipleTimesDifferentPath() public {
+    /// @notice Nodes can store data to inbox multiple times with different containerId's
+    function testNodesCanStoreDataMultipleTimesDifferentPath() public {
         // Warp to initial timestamp
         uint256 initialTimestamp = 0;
         vm.warp(initialTimestamp);
@@ -194,8 +139,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         }
     }
 
-    /// @notice Active nodes can store data to inbox multiple times with same containerId's
-    function testActiveNodesCanStoreDataMultipleTimesSamePath() public {
+    /// @notice Nodes can store data to inbox multiple times with same containerId's
+    function testNodesCanStoreDataMultipleTimesSamePath() public {
         // Warp to initial timestamp
         uint256 initialTimestamp = 0;
         vm.warp(initialTimestamp);
@@ -217,8 +162,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         }
     }
 
-    /// @notice Active nodes can store subscription data lazily
-    function testActiveNodesCanDeliverLazySubscription() public {
+    /// @notice Nodes can store subscription data lazily
+    function testNodesCanDeliverLazySubscription() public {
         // Warp to initial timestamp
         uint256 initialTimestamp = 0;
         vm.warp(initialTimestamp);
@@ -262,8 +207,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         assertEq(item.proof, MOCK_PROOF);
     }
 
-    /// @notice Active nodes can store data via coordinator and directly for same containerId
-    function testActiveNodesCanDeliverDataViaCoordinatorAndDirectSamePath() public {
+    /// @notice Nodes can store data via coordinator and directly for same containerId
+    function testNodesCanDeliverDataViaCoordinatorAndDirectSamePath() public {
         // Warp to initial timestamp
         uint256 initialTimestamp = 0;
         vm.warp(initialTimestamp);
@@ -305,8 +250,8 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
         assertEq(item.proof, MOCK_PROOF);
     }
 
-    /// @notice Multiple active nodes can store data to the same containerId
-    function testMultipleActiveNodesCanStoreDataToInbox() public {
+    /// @notice Multiple nodes can store data to the same containerId
+    function testMultipleNodesCanStoreDataToInbox() public {
         // Warp to initial timestamp
         uint256 initialTimestamp = 0;
         vm.warp(initialTimestamp);
@@ -348,7 +293,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
     }
 
     /// @notice Mock node cannot call `writeViaCoordinator`
-    function testActiveNodeCannotCallAuthenticatedWrite() public {
+    function testNodeCannotCallAuthenticatedWrite() public {
         // Attempt to write data to inbox as ALICE
         vm.startPrank(address(ALICE));
         vm.expectRevert(Inbox.NotCoordinator.selector);
