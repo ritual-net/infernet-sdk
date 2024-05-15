@@ -160,7 +160,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
         address recoveredSigner = ECDSA.recover(digest, v, r, s);
 
         // Collect delegated signer from subscribing contract
-        address delegatedSigner = Delegator(sub.owner).signer();
+        address delegatedSigner = Delegator(sub.owner).getSigner();
 
         // Verify signatures (recoveredSigner should equal delegatedSigner)
         if (recoveredSigner != delegatedSigner) {

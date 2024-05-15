@@ -289,6 +289,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Update signer to backup delegatee
         CALLBACK.updateMockSigner(BACKUP_DELEGATEE_ADDRESS);
+        assertEq(CALLBACK.getSigner(), BACKUP_DELEGATEE_ADDRESS);
 
         // Create subscription with valid message and expect error
         vm.expectRevert(EIP712Coordinator.SignerMismatch.selector);
@@ -315,6 +316,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Update signer to backup delegatee
         CALLBACK.updateMockSigner(BACKUP_DELEGATEE_ADDRESS);
+        assertEq(CALLBACK.getSigner(), BACKUP_DELEGATEE_ADDRESS);
 
         // Creating subscription should return existing subscription (ID: 1)
         (subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
@@ -365,6 +367,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Now, ensure that we can't resign with a new delegatee and force nonce replay
         // Change the signing delegatee to the backup delegatee
         CALLBACK.updateMockSigner(BACKUP_DELEGATEE_ADDRESS);
+        assertEq(CALLBACK.getSigner(), BACKUP_DELEGATEE_ADDRESS);
 
         // Use same summy subscription with redundancy == 5, but sign with backup delegatee
         (v, r, s) = vm.sign(BACKUP_DELEGATEE_PRIVATE_KEY, message);
