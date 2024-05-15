@@ -7,12 +7,14 @@ import {Registry} from "../src/Registry.sol";
 import {LibDeploy} from "./lib/LibDeploy.sol";
 import {MockNode} from "./mocks/MockNode.sol";
 import {Inbox, InboxItem} from "../src/Inbox.sol";
+import {Allowlist} from "../src/pattern/Allowlist.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {Coordinator, Subscription} from "../src/Coordinator.sol";
 import {ICoordinatorEvents, CoordinatorConstants} from "./Coordinator.t.sol";
 import {MockDelegatorCallbackConsumer} from "./mocks/consumer/DelegatorCallback.sol";
 import {MockDelegatorSubscriptionConsumer} from "./mocks/consumer/DelegatorSubscription.sol";
+import {MockAllowlistDelegatorSubscriptionConsumer} from "./mocks/consumer/AllowlistDelegatorSubscription.sol";
 
 /// @title EIP712CoordinatorTest
 /// @notice Tests EIP712Coordinator implementation
@@ -52,6 +54,9 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
     /// @notice Mock subscription consumer (w/ assigned delegatee)
     MockDelegatorSubscriptionConsumer private SUBSCRIPTION;
 
+    /// @notice Mock subscription consumer (w/ Allowlist & assigned delegatee)
+    MockAllowlistDelegatorSubscriptionConsumer private ALLOWLIST_SUBSCRIPTION;
+
     /// @notice Delegatee address
     address private DELEGATEE_ADDRESS;
 
@@ -89,11 +94,18 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         BACKUP_DELEGATEE_PRIVATE_KEY = 0xB0B;
         BACKUP_DELEGATEE_ADDRESS = vm.addr(BACKUP_DELEGATEE_PRIVATE_KEY);
 
-        // Initialize mock callback consumer w/ assigned delegate
+        // Initialize mock callback consumer w/ assigned delegatee
         CALLBACK = new MockDelegatorCallbackConsumer(address(registry), DELEGATEE_ADDRESS);
 
-        // Initialize mock subscription consumer w/ assigned delegate
+        // Initialize mock subscription consumer w/ assigned delegatee
         SUBSCRIPTION = new MockDelegatorSubscriptionConsumer(address(registry), DELEGATEE_ADDRESS);
+
+        // Initialize mock subscription consumer w/ Allowlist & assigned delegatee
+        // Add only Alice as initially allowed node
+        address[] memory initialAllowed = new address[](1);
+        initialAllowed[0] = address(ALICE);
+        ALLOWLIST_SUBSCRIPTION =
+            new MockAllowlistDelegatorSubscriptionConsumer(address(registry), DELEGATEE_ADDRESS, initialAllowed);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -277,6 +289,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Update signer to backup delegatee
         CALLBACK.updateMockSigner(BACKUP_DELEGATEE_ADDRESS);
+        assertEq(CALLBACK.getSigner(), BACKUP_DELEGATEE_ADDRESS);
 
         // Create subscription with valid message and expect error
         vm.expectRevert(EIP712Coordinator.SignerMismatch.selector);
@@ -303,6 +316,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Update signer to backup delegatee
         CALLBACK.updateMockSigner(BACKUP_DELEGATEE_ADDRESS);
+        assertEq(CALLBACK.getSigner(), BACKUP_DELEGATEE_ADDRESS);
 
         // Creating subscription should return existing subscription (ID: 1)
         (subscriptionId,) = COORDINATOR.createSubscriptionDelegatee(0, expiry, sub, v, r, s);
@@ -353,6 +367,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         // Now, ensure that we can't resign with a new delegatee and force nonce replay
         // Change the signing delegatee to the backup delegatee
         CALLBACK.updateMockSigner(BACKUP_DELEGATEE_ADDRESS);
+        assertEq(CALLBACK.getSigner(), BACKUP_DELEGATEE_ADDRESS);
 
         // Use same summy subscription with redundancy == 5, but sign with backup delegatee
         (v, r, s) = vm.sign(BACKUP_DELEGATEE_PRIVATE_KEY, message);
@@ -660,5 +675,62 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         uint256 delta = 20_000 wei;
         assertApproxEqAbs(gasExpected, gasUsed, delta);
         assertApproxEqAbs(gasExpectedCached, gasUsedCached, delta);
+    }
+
+    /// @notice Can deliver delegated subscription response as an allowed node
+    function testCanDeliverDelegatedResponseAsAllowedNode() public {
+        // Starting nonce
+        uint32 nonce = COORDINATOR.maxSubscriberNonce(address(ALLOWLIST_SUBSCRIPTION));
+
+        // Create new dummy subscription w/ redundancy == 2
+        Subscription memory sub = getMockSubscription();
+        sub.owner = address(ALLOWLIST_SUBSCRIPTION);
+        sub.redundancy = 2;
+        sub.maxGasLimit = sub.maxGasLimit + ALLOWLIST_READ_COST;
+
+        // Generate signature expiry
+        uint32 expiry = uint32(block.timestamp) + 30 minutes;
+
+        // Get EIP-712 typed message
+        bytes32 message = getMessage(nonce, expiry, sub);
+
+        // Sign message from delegatee private key
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
+
+        // Create subscription and deliver response, via deliverComputeDelegatee (via allowed node Alice)
+        ALICE.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+
+        // Attempt but fail to deliver response from Bob (unallowed node)
+        vm.expectRevert(Allowlist.NodeNotAllowed.selector);
+        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+    }
+
+    /// @notice Creating new subscription as unallowed node fails upon delivering response
+    function testCannotCreateNewDelegatedSubscriptionAtomicallyAsUnallowedNode() public {
+        // Starting nonce
+        uint32 nonce = COORDINATOR.maxSubscriberNonce(address(ALLOWLIST_SUBSCRIPTION));
+
+        // Create new dummy subscription
+        Subscription memory sub = getMockSubscription();
+        sub.owner = address(ALLOWLIST_SUBSCRIPTION);
+        sub.maxGasLimit = sub.maxGasLimit + ALLOWLIST_READ_COST;
+
+        // Generate signature expiry
+        uint32 expiry = uint32(block.timestamp) + 30 minutes;
+
+        // Get EIP-712 typed message
+        bytes32 message = getMessage(nonce, expiry, sub);
+
+        // Sign message from delegatee private key
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(DELEGATEE_PRIVATE_KEY, message);
+
+        // Create subscription and deliver response via Bob
+        // Expect failure given unallowed node causes atomic tx reversion
+        vm.expectRevert(Allowlist.NodeNotAllowed.selector);
+        BOB.deliverComputeDelegatee(nonce, expiry, sub, v, r, s, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF);
+
+        // Ensure subscription was not created (no serial nonce increment from subscription creation)
+        uint32 finalNonce = COORDINATOR.maxSubscriberNonce(address(ALLOWLIST_SUBSCRIPTION));
+        assertEq(nonce, finalNonce);
     }
 }

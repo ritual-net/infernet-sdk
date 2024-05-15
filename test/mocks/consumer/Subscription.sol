@@ -111,6 +111,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     }
 
     /// @notice Overrides internal function, pushing received response to delivered outputs map
+    /// @dev Allows further overriding downstream (useful for `Allowlist` testing)
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -121,7 +122,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         bytes calldata proof,
         bytes32 containerId,
         uint256 index
-    ) internal override {
+    ) internal virtual override {
         // Log delivered output
         outputs[subscriptionId][interval][redundancy] = DeliveredOutput({
             subscriptionId: subscriptionId,

@@ -22,10 +22,7 @@ contract MockDelegatorCallbackConsumer is Delegator, MockCallbackConsumer {
 
     /// @notice Update new signer
     /// @param newSigner to update
-    /// @dev Checks signer is updated after calling
     function updateMockSigner(address newSigner) external {
         _updateSigner(newSigner);
-
-        assertEq(signer, newSigner);
     }
 }
