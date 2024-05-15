@@ -73,7 +73,7 @@ abstract contract Allowlist {
 
     /// @notice Check whether a `node` is allowed
     /// @param node address to check for set inclusion
-    /// @return true if node is in Allowlist, else false
+    /// @return true if node is in Allowlist & its status is set to `true` (allowed), else false
     function isAllowedNode(address node) external view returns (bool) {
         return allowedNodes[node];
     }

@@ -78,52 +78,73 @@ contract MyContract is SubscriptionConsumer {
 }
 ```
 
-## Repository structure
+## Pruned repository structure
+
+Ignores self-explanatory files:
 
 ```bash
 .
-├── .env.sample # Sample env variables
-├── .gas-snapshot # Function execution gas snapshot
-├── Makefile
-├── README.md
-├── STYLE.md
-├── compiled # Pre-compiled artifacts (via solc)
+├── .env.sample # Sample env file (used for deploy scripts)
+├── compiled # Seperately compiled contracts (via solc)
 │   └── Verifier.sol
 │       ├── Halo2Verifier.json
 │       └── Verifier.sol
-├── foundry.toml # Foundry setup
-├── remappings.txt
 ├── scripts
-│   └── Deploy.sol # EIP712Coordinator deploy script
-├── src # Contracts
+│   └── Deploy.sol # Deploy contracts via LibDeploy
+├── src
 │   ├── Coordinator.sol # Base coordinator
-│   ├── EIP712Coordinator.sol # EIP-712 typed message supporting coordinator
-│   ├── Manager.sol # Node manager
-│   ├── consumer # Consumers inherited by developers
+│   ├── EIP712Coordinator.sol # Coordinator w/ EIP-712 delegation support
+│   ├── Inbox.sol # Message inbox
+│   ├── Registry.sol # Root registry
+│   ├── consumer
 │   │   ├── Base.sol
 │   │   ├── Callback.sol # CallbackConsumer
 │   │   └── Subscription.sol # SubscriptionConsumer
-│   └── pattern # Useful developer patterns
-│       └── Delegator.sol # EIP-712 delegator
-└── test # Tests
+│   ├── pattern
+│   │   ├── Allowlist.sol # Responding node allowlist pattern
+│   │   └── Delegator.sol # Delegated compute pattern (w/ EIP712Coordinator)
+│   ├── payments
+│   │   ├── Fee.sol # Protocol fee registry
+│   │   ├── IProver.sol # Prover interface (implemented downstream)
+│   │   ├── Wallet.sol # Escrow wallet
+│   │   └── WalletFactory.sol # Wallet factory
+│   └── utility
+│       ├── Coordinated.sol # Utility restriction for Coordinator-permissioned fns
+│       └── Reader.sol # Off-chain reader
+└── test
+    ├── Coordinated.t.sol
     ├── Coordinator.t.sol
     ├── E2E.t.sol
     ├── EIP712Coordinator.t.sol
-    ├── Manager.t.sol
+    ├── Fee.t.sol
+    ├── Inbox.t.sol
+    ├── Reader.t.sol
+    ├── Registry.t.sol
+    ├── Wallet.t.sol
+    ├── WalletFactory.t.sol
     ├── ezkl # E2E tests w/ EZKL-generated proofs
     │   ├── BalanceScale.sol
     │   └── DataAttestor.sol
-    ├── lib # Useful libraries
-    │   ├── LibSign.sol # EIP-712 signing
-    │   └── LibStruct.sol # Struct parsing
+    ├── lib
+    │   ├── LibDeploy.sol # Useful deployment library
+    │   └── LibSign.sol # Useful EIP-712 signing library
     └── mocks
-        ├── MockManager.sol
-        ├── MockNode.sol # Mock Infernet node
-        └── consumer
+        ├── MockCoordinated.sol
+        ├── MockNode.sol
+        ├── MockProtocol.sol
+        ├── MockToken.sol
+        ├── consumer
+        │   ├── AllowlistDelegatorSubscription.sol
+        │   ├── AllowlistSubscription.sol
+        │   ├── Base.sol
+        │   ├── Callback.sol
+        │   ├── DelegatorCallback.sol
+        │   ├── DelegatorSubscription.sol
+        │   └── Subscription.sol
+        └── prover
+            ├── Atomic.sol
             ├── Base.sol
-            ├── Callback.sol
-            ├── DelegatorCallback.sol
-            └── Subscription.sol
+            └── Optimistic.sol
 ```
 
 ## License

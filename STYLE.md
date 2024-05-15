@@ -26,13 +26,13 @@ Sort imports by length.
 
 ```solidity
 // Bad
-import {Manager} from "./Manager.sol";
+import {Registry} from "./Registry.sol";
 import {Token} from "./Token.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 
 // Good
 import {Token} from "./Token.sol";
-import {Manager} from "./Manager.sol";
+import {Registry} from "./Registry.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 ```
 
