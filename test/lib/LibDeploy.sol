@@ -32,16 +32,18 @@ library LibDeploy {
     /// @param initialFeeRecipient initial fee recipient for Fee registry
     /// @param initialFee initial protocol fee for Fee registry
     /// @return {Registry, EIP712Coordinator, Inbox, Reader, Fee, WalletFactory}-typed references
-    function deployContracts(uint256 initialNonce, address initialFeeRecipient, uint16 initialFee)
-        internal
-        returns (Registry, EIP712Coordinator, Inbox, Reader, Fee, WalletFactory)
-    {
+    function deployContracts(
+        address deployerAddress,
+        uint256 initialNonce,
+        address initialFeeRecipient,
+        uint16 initialFee
+    ) internal returns (Registry, EIP712Coordinator, Inbox, Reader, Fee, WalletFactory) {
         // Precompute addresses for {Coordinator, Inbox, Reader}
-        address coordinatorAddress = vm.computeCreateAddress(address(this), initialNonce + 1);
-        address inboxAddress = vm.computeCreateAddress(address(this), initialNonce + 2);
-        address readerAddress = vm.computeCreateAddress(address(this), initialNonce + 3);
-        address feeAddress = vm.computeCreateAddress(address(this), initialNonce + 4);
-        address walletFactoryAddress = vm.computeCreateAddress(address(this), initialNonce + 5);
+        address coordinatorAddress = vm.computeCreateAddress(deployerAddress, initialNonce + 1);
+        address inboxAddress = vm.computeCreateAddress(deployerAddress, initialNonce + 2);
+        address readerAddress = vm.computeCreateAddress(deployerAddress, initialNonce + 3);
+        address feeAddress = vm.computeCreateAddress(deployerAddress, initialNonce + 4);
+        address walletFactoryAddress = vm.computeCreateAddress(deployerAddress, initialNonce + 5);
 
         // Initialize new registry
         Registry registry =
@@ -63,11 +65,11 @@ library LibDeploy {
         WalletFactory walletFactory = new WalletFactory(registry);
 
         // Verify addresses match
-        require(registry.COORDINATOR() == coordinatorAddress, "Coordinator address mismatch");
-        require(registry.INBOX() == inboxAddress, "Inbox address mismatch");
-        require(registry.READER() == readerAddress, "Reader address mismatch");
-        require(registry.FEE() == feeAddress, "Fee address mismatch");
-        require(registry.WALLET_FACTORY() == walletFactoryAddress, "WalletFactory address mismatch");
+        require(registry.COORDINATOR() == address(coordinator), "Coordinator address mismatch");
+        require(registry.INBOX() == address(inbox), "Inbox address mismatch");
+        require(registry.READER() == address(reader), "Reader address mismatch");
+        require(registry.FEE() == address(fee), "Fee address mismatch");
+        require(registry.WALLET_FACTORY() == address(walletFactory), "WalletFactory address mismatch");
 
         return (registry, coordinator, inbox, reader, fee, walletFactory);
     }
