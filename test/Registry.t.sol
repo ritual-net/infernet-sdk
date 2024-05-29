@@ -84,7 +84,7 @@ contract RegistryTest is Test {
             Reader reader,
             Fee fee,
             WalletFactory walletFactory
-        ) = LibDeploy.deployContracts(initialNonce, address(this), 500);
+        ) = LibDeploy.deployContracts(address(this), initialNonce, address(this), 500);
 
         // Assert checks
         // Note: these are somewhat redundant given LibDeploy also `require`-checks at deploy time, but useful for future safety
