@@ -52,7 +52,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         address paymentToken,
         uint256 paymentAmount,
         address wallet,
-        address prover
+        address verifier
     ) external returns (uint32) {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
@@ -61,7 +61,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
 
         // Create new subscription
         uint32 actualSubscriptionID = _createComputeSubscription(
-            containerId, frequency, period, redundancy, lazy, paymentToken, paymentAmount, wallet, prover
+            containerId, frequency, period, redundancy, lazy, paymentToken, paymentAmount, wallet, verifier
         );
 
         // Assert ID expectations
@@ -81,7 +81,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         assertEq(sub.paymentToken, paymentToken);
         assertEq(sub.paymentAmount, paymentAmount);
         assertEq(sub.wallet, wallet);
-        assertEq(sub.prover, prover);
+        assertEq(sub.verifier, verifier);
 
         // Explicitly return subscription ID
         return actualSubscriptionID;

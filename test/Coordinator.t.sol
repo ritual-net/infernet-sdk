@@ -12,12 +12,12 @@ import {BaseConsumer} from "../src/consumer/Base.sol";
 import {MockProtocol} from "./mocks/MockProtocol.sol";
 import {Allowlist} from "../src/pattern/Allowlist.sol";
 import {DeliveredOutput} from "./mocks/consumer/Base.sol";
-import {MockAtomicProver} from "./mocks/prover/Atomic.sol";
+import {MockAtomicVerifier} from "./mocks/verifier/Atomic.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 import {WalletFactory} from "../src/payments/WalletFactory.sol";
 import {Coordinator, Subscription} from "../src/Coordinator.sol";
 import {MockCallbackConsumer} from "./mocks/consumer/Callback.sol";
-import {MockOptimisticProver} from "./mocks/prover/Optimistic.sol";
+import {MockOptimisticVerifier} from "./mocks/verifier/Optimistic.sol";
 import {MockSubscriptionConsumer} from "./mocks/consumer/Subscription.sol";
 import {MockAllowlistSubscriptionConsumer} from "./mocks/consumer/AllowlistSubscription.sol";
 
@@ -67,8 +67,8 @@ abstract contract CoordinatorConstants {
     /// @notice Mock empty wallet
     address internal constant NO_WALLET = ZERO_ADDRESS;
 
-    /// @notice Mock empty prover contract
-    address internal constant NO_PROVER = ZERO_ADDRESS;
+    /// @notice Mock empty verifier contract
+    address internal constant NO_VERIFIER = ZERO_ADDRESS;
 }
 
 /// @title CoordinatorTest
@@ -114,11 +114,11 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
     /// @notice Mock subscription consumer w/ Allowlist
     MockAllowlistSubscriptionConsumer internal ALLOWLIST_SUBSCRIPTION;
 
-    /// @notice Mock atomic prover
-    MockAtomicProver internal ATOMIC_PROVER;
+    /// @notice Mock atomic verifier
+    MockAtomicVerifier internal ATOMIC_VERIFIER;
 
-    /// @notice Mock optimistic prover
-    MockOptimisticProver internal OPTIMISTIC_PROVER;
+    /// @notice Mock optimistic verifier
+    MockOptimisticVerifier internal OPTIMISTIC_VERIFIER;
 
     /*//////////////////////////////////////////////////////////////
                                  SETUP
@@ -162,9 +162,9 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
         initialAllowed[0] = address(ALICE);
         ALLOWLIST_SUBSCRIPTION = new MockAllowlistSubscriptionConsumer(address(registry), initialAllowed);
 
-        // Initialize mock provers
-        ATOMIC_PROVER = new MockAtomicProver(registry);
-        OPTIMISTIC_PROVER = new MockOptimisticProver(registry);
+        // Initialize mock verifiers
+        ATOMIC_VERIFIER = new MockAtomicVerifier(registry);
+        OPTIMISTIC_VERIFIER = new MockOptimisticVerifier(registry);
     }
 }
 
@@ -175,19 +175,19 @@ contract CoordinatorGeneralTest is CoordinatorTest {
     function testCannotBeReassignedSubscriptionID() public {
         // Create new callback subscription
         uint32 id = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
         assertEq(id, 1);
 
         // Create new subscriptions
         CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
         CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
         CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Assert head
@@ -203,7 +203,7 @@ contract CoordinatorGeneralTest is CoordinatorTest {
 
         // Create new subscription
         id = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
         assertEq(id, 5);
         assertEq(COORDINATOR.id(), 6);
@@ -231,7 +231,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         vm.expectEmit(address(COORDINATOR));
         emit SubscriptionCreated(expected);
         uint32 actual = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Assert subscription ID is correctly stored
@@ -258,7 +258,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
 
         // Create new callback request
         uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Attempt to deliver callback request w/ incorrect interval
@@ -270,7 +270,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
     function testCanDeliverCallbackResponse() public {
         // Create new callback request
         uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver callback request
@@ -296,7 +296,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         // Create new callback request w/ redundancy = 2
         uint16 redundancy = 2;
         uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, redundancy, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, redundancy, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver callback request from two nodes
@@ -324,7 +324,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
         // Create new callback request w/ redundancy = 2
         uint16 redundancy = 2;
         uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, redundancy, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, redundancy, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver callback request from Alice twice
@@ -337,7 +337,7 @@ contract CoordinatorCallbackTest is CoordinatorTest {
     function testCallbackDeliveryDoesNotStoreDataInInbox() public {
         // Create new callback request
         uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver callback request from Alice
@@ -363,7 +363,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     function testCanCancelSubscription() public {
         // Create subscription
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Cancel subscription and expect event emission
@@ -377,7 +377,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         // Create subscription
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Fulfill at least once
@@ -399,7 +399,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     function testCanCancelCancelledSubscription() public {
         // Create and cancel subscription
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
         SUBSCRIPTION.cancelMockSubscription(subId);
 
@@ -411,7 +411,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
     function testCannotCancelUnownedSubscription() public {
         // Create callback subscription
         uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_CONTAINER_INPUTS, 1, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Attempt to cancel subscription from SUBSCRIPTION consumer
@@ -472,7 +472,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
         // Create new subscription at time = 0
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 3, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Expect subscription to be inactive till time = 60
@@ -498,7 +498,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Expect failure at any time prior to t = 60s
@@ -533,7 +533,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Successfully deliver at t = 60s, interval = 1
@@ -559,7 +559,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Attempt to deliver interval = 1 at time = 120s
@@ -581,7 +581,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Attempt to deliver interval = 2 at time < 120s
@@ -603,7 +603,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Deliver from Alice
@@ -631,7 +631,7 @@ contract CoordinatorSubscriptionTest is CoordinatorTest {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Deliver from Alice
@@ -660,7 +660,7 @@ contract CoordinatorEagerSubscriptionTest is CoordinatorTest {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Fulfill subscription as Alice
@@ -693,7 +693,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         // Create new lazy subscription
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 1, 1 minutes, 1, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver lazy subscription from Alice
@@ -727,12 +727,12 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         // Create new eager subscription
         vm.warp(0);
         uint32 subIdEager = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Create new lazy subscription
         uint32 subIdLazy = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 1, 1 minutes, 1, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver lazy and eager subscriptions
@@ -779,7 +779,7 @@ contract CoordinatorLazySubscriptionTest is CoordinatorTest {
         // Create new lazy subscription w/ frequency = 2, redundancy = 2
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 2, 1 minutes, 2, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 2, 1 minutes, 2, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver first interval from {Alice, Bob}
@@ -881,7 +881,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         // Create subscription
         vm.warp(0);
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Successfully fulfill from Alice
@@ -897,7 +897,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         // Create subscription
         vm.warp(0);
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Attempt to fulfill from an unallowed node
@@ -915,7 +915,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         // Create subscription w/ frequency == 2
         vm.warp(0);
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 2, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 2, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Fulfill once from Alice
@@ -935,7 +935,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         // Create subscription w/ frequency 10
         vm.warp(0);
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 10, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 10, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver response from Alice successfully or unsuccessfully depending on status in interval
@@ -973,7 +973,7 @@ contract CoordinatorAllowlistSubscriptionTest is CoordinatorTest {
         // Create subscription (w/ lazy = true)
         vm.warp(0);
         uint32 subId = ALLOWLIST_SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 1, 1 minutes, 1, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, true, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Attempt to deliver from Bob expecting failure
@@ -1003,8 +1003,9 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
         vm.deal(aliceWallet, 1 ether);
 
         // Create new one-time subscription with 1 eth payout
-        uint32 subId =
-            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_PROVER);
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_VERIFIER
+        );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
         vm.prank(address(ALICE));
@@ -1038,7 +1039,7 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
 
         // Create new one-time subscription with 50e6 payout
         uint32 subId =
-            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, aliceWallet, NO_PROVER);
+            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, aliceWallet, NO_VERIFIER);
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 90e6 tokens
         vm.prank(address(ALICE));
@@ -1073,7 +1074,7 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
         // Create new two-time subscription with 40e6 payout
         vm.warp(0 minutes);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 2, 1 minutes, 1, false, address(TOKEN), 40e6, aliceWallet, NO_PROVER
+            MOCK_CONTAINER_ID, 2, 1 minutes, 1, false, address(TOKEN), 40e6, aliceWallet, NO_VERIFIER
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 90e6 tokens
@@ -1110,7 +1111,7 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
 
         // Create new one-time subscription with 50e6 payout
         uint32 subId = CALLBACK.createMockRequest(
-            MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, address(aliceWallet), NO_PROVER
+            MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, address(aliceWallet), NO_VERIFIER
         );
 
         // Execute response fulfillment from Bob, expecting failure
@@ -1128,8 +1129,9 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
         vm.deal(aliceWallet, 1 ether);
 
         // Create new one-time subscription with 1 eth payout
-        uint32 subId =
-            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_PROVER);
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_VERIFIER
+        );
 
         // Verify CALLBACK has 0 allowance to spend on aliceWallet
         assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0 ether);
@@ -1149,8 +1151,9 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
         vm.deal(aliceWallet, 1 ether);
 
         // Create new one-time subscription with 1 eth payout
-        uint32 subId =
-            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_PROVER);
+        uint32 subId = CALLBACK.createMockRequest(
+            MOCK_CONTAINER_ID, MOCK_INPUT, 1, ZERO_ADDRESS, 1 ether, aliceWallet, NO_VERIFIER
+        );
 
         // Increase callback allowance to just under 1 ether
         vm.startPrank(address(ALICE));
@@ -1185,7 +1188,7 @@ contract CoordinatorLazyPaymentNoProofTest is CoordinatorTest {
             address(TOKEN),
             40e6,
             aliceWallet,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 90e6 tokens
@@ -1232,8 +1235,8 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
             address(TOKEN),
             50e6,
             aliceWallet,
-            // Specify atomic prover
-            address(ATOMIC_PROVER)
+            // Specify atomic verifier
+            address(ATOMIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 50e6 tokens
@@ -1244,12 +1247,12 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
         assertEq(TOKEN.balanceOf(aliceWallet), 50e6);
         assertEq(TOKEN.balanceOf(bobWallet), 50e6);
 
-        // Setup atomic prover approved token + fee (5 tokens)
-        ATOMIC_PROVER.updateSupportedToken(address(TOKEN), true);
-        ATOMIC_PROVER.updateFee(address(TOKEN), 5e6);
+        // Setup atomic verifier approved token + fee (5 tokens)
+        ATOMIC_VERIFIER.updateSupportedToken(address(TOKEN), true);
+        ATOMIC_VERIFIER.updateFee(address(TOKEN), 5e6);
 
-        // Ensure that atomic prover will return true for proof validation
-        ATOMIC_PROVER.setNextValidityTrue();
+        // Ensure that atomic verifier will return true for proof verification
+        ATOMIC_VERIFIER.setNextValidityTrue();
 
         // Execute response fulfillment from Charlie expecting it to fail given no authorization to Bob's wallet
         vm.warp(1 minutes);
@@ -1274,8 +1277,8 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
             address(TOKEN),
             50e6,
             aliceWallet,
-            // Specify atomic prover
-            address(ATOMIC_PROVER)
+            // Specify atomic verifier
+            address(ATOMIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 50e6 tokens
@@ -1290,12 +1293,12 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
         assertEq(TOKEN.balanceOf(aliceWallet), 50e6);
         assertEq(TOKEN.balanceOf(bobWallet), 0e6);
 
-        // Setup atomic prover approved token + fee (5 tokens)
-        ATOMIC_PROVER.updateSupportedToken(address(TOKEN), true);
-        ATOMIC_PROVER.updateFee(address(TOKEN), 5e6);
+        // Setup atomic verifier approved token + fee (5 tokens)
+        ATOMIC_VERIFIER.updateSupportedToken(address(TOKEN), true);
+        ATOMIC_VERIFIER.updateFee(address(TOKEN), 5e6);
 
-        // Ensure that atomic prover will return true for proof validation
-        ATOMIC_PROVER.setNextValidityTrue();
+        // Ensure that atomic verifier will return true for proof verification
+        ATOMIC_VERIFIER.setNextValidityTrue();
 
         // Execute response fulfillment expecting it to fail given not enough unlocked funds
         vm.warp(1 minutes);
@@ -1321,8 +1324,8 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
             address(TOKEN),
             40e6,
             aliceWallet,
-            // Specify atomic prover
-            address(ATOMIC_PROVER)
+            // Specify atomic verifier
+            address(ATOMIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 50e6 tokens
@@ -1337,12 +1340,12 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
         assertEq(TOKEN.balanceOf(aliceWallet), 50e6);
         assertEq(TOKEN.balanceOf(bobWallet), 50e6);
 
-        // Setup atomic prover approved token + fee (5 tokens)
-        ATOMIC_PROVER.updateSupportedToken(address(TOKEN), true);
-        ATOMIC_PROVER.updateFee(address(TOKEN), 5e6);
+        // Setup atomic verifier approved token + fee (5 tokens)
+        ATOMIC_VERIFIER.updateSupportedToken(address(TOKEN), true);
+        ATOMIC_VERIFIER.updateFee(address(TOKEN), 5e6);
 
-        // Ensure that atomic prover will return true for proof validation
-        ATOMIC_PROVER.setNextValidityTrue();
+        // Ensure that atomic verifier will return true for proof verification
+        ATOMIC_VERIFIER.setNextValidityTrue();
 
         // Execute response fulfillment from Bob
         vm.warp(1 minutes);
@@ -1351,7 +1354,7 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
         // Assert new balances
         assertEq(TOKEN.balanceOf(aliceWallet), 10e6); // -40
         assertEq(TOKEN.balanceOf(bobWallet), 80_912_000); // 50 (initial) + (40 - (40 * 5.11% * 2) - (5))
-        assertEq(TOKEN.balanceOf(address(ATOMIC_PROVER)), 4_744_500); // (5 - (5 * 5.11%))
+        assertEq(TOKEN.balanceOf(address(ATOMIC_VERIFIER)), 4_744_500); // (5 - (5 * 5.11%))
         assertEq(PROTOCOL.getTokenBalance(address(TOKEN)), 4_343_500);
 
         // Assert consumed allowance
@@ -1377,8 +1380,8 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
             ZERO_ADDRESS,
             1 ether,
             aliceWallet,
-            // Specify atomic prover
-            address(ATOMIC_PROVER)
+            // Specify atomic verifier
+            address(ATOMIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
@@ -1393,25 +1396,25 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
         assertEq(aliceWallet.balance, 1 ether);
         assertEq(bobWallet.balance, 1 ether);
 
-        // Setup atomic prover approved token + fee (0.111 ether)
-        ATOMIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
-        ATOMIC_PROVER.updateFee(ZERO_ADDRESS, 111e15);
+        // Setup atomic verifier approved token + fee (0.111 ether)
+        ATOMIC_VERIFIER.updateSupportedToken(ZERO_ADDRESS, true);
+        ATOMIC_VERIFIER.updateFee(ZERO_ADDRESS, 111e15);
 
-        // Ensure that atomic prover will return false for proof validation
-        ATOMIC_PROVER.setNextValidityFalse();
+        // Ensure that atomic verifier will return false for proof verification
+        ATOMIC_VERIFIER.setNextValidityFalse();
 
         // Execute response fulfillment from Bob
         vm.warp(1 minutes);
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
 
         // Assert new balances
-        // Alice --> 1 ether - protocol fee (0.1022 ether) - prover fee (0.111 ether) + slashed (1 ether) = 1.7868 ether
+        // Alice --> 1 ether - protocol fee (0.1022 ether) - verifier fee (0.111 ether) + slashed (1 ether) = 1.7868 ether
         assertEq(aliceWallet.balance, 17_868e14);
         // Bob --> -1 ether
         assertEq(bobWallet.balance, 0 ether);
-        // Prover --> +0.111 * (1 - 0.0511) ether = 0.1053279 ether
-        assertEq(ATOMIC_PROVER.getEtherBalance(), 1_053_279e11);
-        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.0056721 ether) = 0.1078721 ether
+        // verifier --> +0.111 * (1 - 0.0511) ether = 0.1053279 ether
+        assertEq(ATOMIC_VERIFIER.getEtherBalance(), 1_053_279e11);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromVerifier (0.0056721 ether) = 0.1078721 ether
         assertEq(PROTOCOL.getEtherBalance(), 1_078_721e11);
 
         // Assert consumed allowance
@@ -1423,7 +1426,7 @@ contract CoordinatorEagerPaymentProofTest is CoordinatorTest {
 /// @title CoordinatorLazyPaymentProofTest
 /// @notice Coordinator tests specific to lazy subscriptions with payments and proofs
 contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
-    /// @notice Subscription cannot be fulfilled with incorrect proof validation
+    /// @notice Subscription cannot be fulfilled with incorrect proof verification
     function testSubscriptionCannotBeFinalizedWithIncorrectProofValidation() public {
         // Create new wallets
         address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
@@ -1441,8 +1444,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
             ZERO_ADDRESS,
             1 ether,
             aliceWallet,
-            // Specify optimistic prover
-            address(OPTIMISTIC_PROVER)
+            // Specify optimistic verifier
+            address(OPTIMISTIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
@@ -1457,16 +1460,16 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         assertEq(aliceWallet.balance, 1 ether);
         assertEq(bobWallet.balance, 1 ether);
 
-        // Setup optimistic prover approved token + fee (0.1 ether)
-        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
-        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+        // Setup optimistic verifier approved token + fee (0.1 ether)
+        OPTIMISTIC_VERIFIER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_VERIFIER.updateFee(ZERO_ADDRESS, 1e17);
 
         // Execute response fulfillment from Bob
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
 
-        // Attempt to fulfill with incorrect proof validation data
+        // Attempt to fulfill with incorrect proof verification data
         vm.expectRevert(Coordinator.ProofRequestNotFound.selector);
-        OPTIMISTIC_PROVER.mockDeliverProof(subId + 1, 1, address(BOB), true);
+        OPTIMISTIC_VERIFIER.mockDeliverProof(subId + 1, 1, address(BOB), true);
     }
 
     /// @notice Subscription can be fulfilled with payment when proof validates correctly
@@ -1487,8 +1490,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
             ZERO_ADDRESS,
             1 ether,
             aliceWallet,
-            // Specify optimistic prover
-            address(OPTIMISTIC_PROVER)
+            // Specify optimistic verifier
+            address(OPTIMISTIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
@@ -1503,15 +1506,15 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         assertEq(aliceWallet.balance, 1 ether);
         assertEq(bobWallet.balance, 1 ether);
 
-        // Setup optimistic prover approved token + fee (0.1 ether)
-        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
-        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+        // Setup optimistic verifier approved token + fee (0.1 ether)
+        OPTIMISTIC_VERIFIER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_VERIFIER.updateFee(ZERO_ADDRESS, 1e17);
 
         // Execute response fulfillment from Bob
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
 
         // Assert immediate balances
-        // Alice -> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        // Alice -> 1 ether - protocol fee (0.1022 ether) - verifier fee (0.1 ether)
         // Alice --> allowance: 0 ether
         assertEq(aliceWallet.balance, 7978e14);
         assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
@@ -1519,14 +1522,14 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         // Bob --> allowance: 0 ether
         assertEq(bobWallet.balance, 1 ether);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0);
-        // Prover --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
-        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.00511 ether) = 0.10731 ether
+        // verifier --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 9489e13);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromVerifier (0.00511 ether) = 0.10731 ether
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
 
         // Fast forward 1 day and trigger optimistic response with valid: true
         vm.warp(1 days);
-        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), true);
+        OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), true);
 
         // Assert new balances
         // Alice --> 0 ether
@@ -1536,8 +1539,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         // Bob --> allowance: 1 ether
         assertEq(bobWallet.balance, 17_978e14);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
-        // Prover, protocol stay same
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        // verifier, protocol stay same
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 9489e13);
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
     }
 
@@ -1559,8 +1562,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
             ZERO_ADDRESS,
             1 ether,
             aliceWallet,
-            // Specify optimistic prover
-            address(OPTIMISTIC_PROVER)
+            // Specify optimistic verifier
+            address(OPTIMISTIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
@@ -1575,9 +1578,9 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         assertEq(aliceWallet.balance, 1 ether);
         assertEq(bobWallet.balance, 1 ether);
 
-        // Setup optimistic prover approved token + fee (0.1 ether)
-        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
-        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+        // Setup optimistic verifier approved token + fee (0.1 ether)
+        OPTIMISTIC_VERIFIER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_VERIFIER.updateFee(ZERO_ADDRESS, 1e17);
 
         // Execute response fulfillment from Bob
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
@@ -1592,7 +1595,7 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Fast forward 1 day and trigger optimistic response with valid: true
         vm.warp(1 days);
-        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), true);
+        OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), true);
 
         // Assert new balances
         // Alice --> 0 ether
@@ -1602,8 +1605,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         // Bob --> allowance: 1 ether
         assertEq(bobWallet.balance, 17_978e14);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
-        // Prover, protocol stay same
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        // verifier, protocol stay same
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 9489e13);
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
     }
 
@@ -1625,8 +1628,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
             ZERO_ADDRESS,
             1 ether,
             aliceWallet,
-            // Specify optimistic prover
-            address(OPTIMISTIC_PROVER)
+            // Specify optimistic verifier
+            address(OPTIMISTIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
@@ -1641,15 +1644,15 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         assertEq(aliceWallet.balance, 1 ether);
         assertEq(bobWallet.balance, 1 ether);
 
-        // Setup optimistic prover approved token + fee (0.1 ether)
-        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
-        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+        // Setup optimistic verifier approved token + fee (0.1 ether)
+        OPTIMISTIC_VERIFIER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_VERIFIER.updateFee(ZERO_ADDRESS, 1e17);
 
         // Execute response fulfillment from Bob
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
 
         // Assert immediate balances
-        // Alice -> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        // Alice -> 1 ether - protocol fee (0.1022 ether) - verifier fee (0.1 ether)
         // Alice --> allowance: 0 ether
         assertEq(aliceWallet.balance, 7978e14);
         assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
@@ -1657,26 +1660,26 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         // Bob --> allowance: 0 ether
         assertEq(bobWallet.balance, 1 ether);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0);
-        // Prover --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
-        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.00511 ether) = 0.10731 ether
+        // verifier --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 9489e13);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromVerifier (0.00511 ether) = 0.10731 ether
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
 
         // Fast forward 1 day and trigger optimistic response with valid: false
         vm.warp(1 days);
-        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), false);
+        OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), false);
 
         // Assert new balances
-        // Alice --> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether) + 1 ether (slashed from node)
-        // Alice --> allowance: 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        // Alice --> 1 ether - protocol fee (0.1022 ether) - verifier fee (0.1 ether) + 1 ether (slashed from node)
+        // Alice --> allowance: 1 ether - protocol fee (0.1022 ether) - verifier fee (0.1 ether)
         assertEq(aliceWallet.balance, 17_978e14);
         assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 7978e14);
         // Bob --> 0 ether
         // Bob --> allowance: 0 ether
         assertEq(bobWallet.balance, 0);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0 ether);
-        // Prover, protocol stay same
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        // verifier, protocol stay same
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 9489e13);
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
     }
 
@@ -1699,8 +1702,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
             ZERO_ADDRESS,
             1 ether,
             aliceWallet,
-            // Specify optimistic prover
-            address(OPTIMISTIC_PROVER)
+            // Specify optimistic verifier
+            address(OPTIMISTIC_VERIFIER)
         );
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 1 ether
@@ -1715,15 +1718,15 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         assertEq(aliceWallet.balance, 1 ether);
         assertEq(bobWallet.balance, 1 ether);
 
-        // Setup optimistic prover approved token + fee (0.1 ether)
-        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
-        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+        // Setup optimistic verifier approved token + fee (0.1 ether)
+        OPTIMISTIC_VERIFIER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_VERIFIER.updateFee(ZERO_ADDRESS, 1e17);
 
         // Execute response fulfillment from Bob
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
 
         // Assert immediate balances
-        // Alice -> 1 ether - protocol fee (0.1022 ether) - prover fee (0.1 ether)
+        // Alice -> 1 ether - protocol fee (0.1022 ether) - verifier fee (0.1 ether)
         // Alice --> allowance: 0 ether
         assertEq(aliceWallet.balance, 7978e14);
         assertEq(Wallet(payable(aliceWallet)).allowance(address(CALLBACK), ZERO_ADDRESS), 0);
@@ -1731,14 +1734,14 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         // Bob --> allowance: 0 ether
         assertEq(bobWallet.balance, 1 ether);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 0);
-        // Prover --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
-        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromProver (0.00511 ether) = 0.10731 ether
+        // verifier --> 0.1 * (1 - 0.0511) ether = 0.09489 ether
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 9489e13);
+        // Protocol --> feeFromConsumer (0.1022 ether) + feeFromVerifier (0.00511 ether) = 0.10731 ether
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
 
-        // Fast forward 1 week and trigger forced proof validation
+        // Fast forward 1 week and trigger forced proof verification
         vm.warp(1 weeks);
-        COORDINATOR.finalizeProofValidation(subId, 1, address(BOB), true);
+        COORDINATOR.finalizeProofVerification(subId, 1, address(BOB), true);
 
         // Assert new balances
         // Alice --> 0 ether
@@ -1748,8 +1751,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
         // Bob --> allowance: 1 ether
         assertEq(bobWallet.balance, 17_978e14);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
-        // Prover, protocol stay same
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 9489e13);
+        // verifier, protocol stay same
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 9489e13);
         assertEq(PROTOCOL.getEtherBalance(), 10_731e13);
     }
 
@@ -1774,13 +1777,13 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
             ZERO_ADDRESS,
             1 ether,
             aliceWallet,
-            // Specify optimistic prover
-            address(OPTIMISTIC_PROVER)
+            // Specify optimistic verifier
+            address(OPTIMISTIC_VERIFIER)
         );
 
-        // Setup optimistic prover approved token + fee (0.1 ether)
-        OPTIMISTIC_PROVER.updateSupportedToken(ZERO_ADDRESS, true);
-        OPTIMISTIC_PROVER.updateFee(ZERO_ADDRESS, 1e17);
+        // Setup optimistic verifier approved token + fee (0.1 ether)
+        OPTIMISTIC_VERIFIER.updateSupportedToken(ZERO_ADDRESS, true);
+        OPTIMISTIC_VERIFIER.updateFee(ZERO_ADDRESS, 1e17);
 
         // Allow CALLBACK consumer to spend alice wallet balance up to 2 ether
         vm.prank(address(ALICE));
@@ -1800,7 +1803,7 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // During optimistic window, process as false
         vm.warp(1 days + 1 hours);
-        OPTIMISTIC_PROVER.mockDeliverProof(subId, 1, address(BOB), false);
+        OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), false);
 
         // Deliver second subscription from Bob
         vm.warp(2 days);
@@ -1808,14 +1811,14 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Fast forward past optimistic window, processing in favor of Bob
         vm.warp(10 days);
-        COORDINATOR.finalizeProofValidation(subId, 2, address(BOB), true);
+        COORDINATOR.finalizeProofVerification(subId, 2, address(BOB), true);
 
         // Assert new balances
         assertEq(aliceWallet.balance, 17_978e14);
         assertEq(Wallet(payable(aliceWallet)).allowance(address(SUBSCRIPTION), ZERO_ADDRESS), 7978e14);
         assertEq(bobWallet.balance, 17_978e14);
         assertEq(Wallet(payable(bobWallet)).allowance(address(BOB), ZERO_ADDRESS), 1 ether);
-        assertEq(OPTIMISTIC_PROVER.getEtherBalance(), 18_978e13);
+        assertEq(OPTIMISTIC_VERIFIER.getEtherBalance(), 18_978e13);
         assertEq(PROTOCOL.getEtherBalance(), 21_462e13);
     }
 }

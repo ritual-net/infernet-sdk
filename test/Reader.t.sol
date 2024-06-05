@@ -87,7 +87,7 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[0].paymentToken, actual.paymentToken);
         assertEq(read[0].paymentAmount, actual.paymentAmount);
         assertEq(read[0].wallet, actual.wallet);
-        assertEq(read[0].prover, actual.prover);
+        assertEq(read[0].verifier, actual.verifier);
     }
 
     /// @notice Can read batch subscriptions
@@ -133,7 +133,7 @@ contract ReaderTest is Test, CoordinatorConstants {
             assertEq(read[i].paymentToken, address(uint160(i + 1)));
             assertEq(read[i].paymentAmount, i + 1);
             assertEq(read[i].wallet, address(uint160(i + 1)));
-            assertEq(read[i].prover, address(uint160(i + 1)));
+            assertEq(read[i].verifier, address(uint160(i + 1)));
         }
 
         // Check cancelled subscription
@@ -147,7 +147,7 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[3].paymentToken, address(uint160(4)));
         assertEq(read[3].paymentAmount, 4);
         assertEq(read[3].wallet, address(uint160(4)));
-        assertEq(read[3].prover, address(uint160(4)));
+        assertEq(read[3].verifier, address(uint160(4)));
 
         // Check non-existent subscription
         assertEq(read[4].owner, address(0));
@@ -160,7 +160,7 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[4].paymentToken, address(0));
         assertEq(read[4].paymentAmount, 0);
         assertEq(read[4].wallet, address(0));
-        assertEq(read[4].prover, address(0));
+        assertEq(read[4].verifier, address(0));
     }
 
     /// @notice Can read cancelled or non-existent subscription
@@ -193,7 +193,7 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[0].paymentToken, address(1));
         assertEq(read[0].paymentAmount, 123);
         assertEq(read[0].wallet, address(2));
-        assertEq(read[0].prover, address(3));
+        assertEq(read[0].verifier, address(3));
 
         // Assert non-existent subscription
         assertEq(read[1].owner, address(0));
@@ -206,7 +206,7 @@ contract ReaderTest is Test, CoordinatorConstants {
         assertEq(read[1].paymentToken, address(0));
         assertEq(read[1].paymentAmount, 0);
         assertEq(read[1].wallet, address(0));
-        assertEq(read[1].prover, address(0));
+        assertEq(read[1].verifier, address(0));
     }
 
     /// @notice Cannot read batch subscriptons where `endId` < `startId`
@@ -230,12 +230,12 @@ contract ReaderTest is Test, CoordinatorConstants {
         // Create first subscription (frequency = 2, redundancy = 2)
         vm.warp(0);
         uint32 subOne = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 2, 1 minutes, 2, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 2, 1 minutes, 2, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Create second subscription (frequency = 1, redundancy = 1)
         uint32 subTwo = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 1, 1 minutes, 1, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver (id: subOne, interval: 1) from Alice + Bob
@@ -289,7 +289,7 @@ contract ReaderTest is Test, CoordinatorConstants {
         // Create subscription
         vm.warp(0);
         uint32 subId = SUBSCRIPTION.createMockSubscription(
-            MOCK_CONTAINER_ID, 3, 1 minutes, 2, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_PROVER
+            MOCK_CONTAINER_ID, 3, 1 minutes, 2, false, NO_PAYMENT_TOKEN, 0, NO_WALLET, NO_VERIFIER
         );
 
         // Deliver subscription

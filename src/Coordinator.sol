@@ -5,8 +5,8 @@ import {Inbox} from "./Inbox.sol";
 import {Fee} from "./payments/Fee.sol";
 import {Registry} from "./Registry.sol";
 import {Wallet} from "./payments/Wallet.sol";
-import {IProver} from "./payments/IProver.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
+import {IVerifier} from "./payments/IVerifier.sol";
 import {WalletFactory} from "./payments/WalletFactory.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 
@@ -20,7 +20,7 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 /// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
 /// @dev Tightly-packed struct:
 ///      - [owner, activeAt, period, frequency]: [160, 32 32, 32] = 256
-///      - [redundancy, containerId, lazy, prover]: [16, 32, 8, 160] = 216
+///      - [redundancy, containerId, lazy, verifier]: [16, 32, 8, 160] = 216
 ///      - [paymentAmount]: [256] = 256
 ///      - [paymentToken]: [160] = 160
 ///      - [wallet]: [160] = 160
@@ -51,13 +51,13 @@ struct Subscription {
     /// @dev When `true`, container compute outputs are stored in `Inbox` and not delivered eagerly to a consumer
     /// @dev When `false`, container compute outputs are not stored in `Inbox` and are delivered eagerly to a consumer
     bool lazy;
-    /// @notice Optional prover contract to restrict subscription payment on the basis of proof verification
+    /// @notice Optional verifier contract to restrict subscription payment on the basis of proof verification
     /// @dev If `address(0)`, we assume that no proof contract is necessary, and disperse supplied payment immediately
-    /// @dev If prover contract is supplied, it must implement the `IProver` interface
-    /// @dev Eager prover contracts disperse payment immediately to relevant `Wallet`(s)
-    /// @dev Lazy prover contracts disperse payment after a delay (max. 1-week) to relevant `Wallet`(s)
+    /// @dev If verifier contract is supplied, it must implement the `IVerifier` interface
+    /// @dev Eager verifier contracts disperse payment immediately to relevant `Wallet`(s)
+    /// @dev Lazy verifier contracts disperse payment after a delay (max. 1-week) to relevant `Wallet`(s)
     /// @dev Notice that consumer contracts can still independently implement their own 0-cost proof verification within their contracts
-    address payable prover;
+    address payable verifier;
     /// @notice Optional amount to pay in `paymentToken` each time a subscription is processed
     /// @dev If `0`, subscription has no associated payment
     /// @dev uint256 since we allow `paymentToken`(s) to have arbitrary ERC20 implementations (unknown `decimal`s)
@@ -72,7 +72,7 @@ struct Subscription {
     address payable wallet;
 }
 
-/// @notice A ProofRequest is a request made to a prover contract to validate some proof bytes
+/// @notice A ProofRequest is a request made to a verifier contract to validate some proof bytes
 /// @dev Tightly-packed struct
 ///      - [expiry, nodeWallet]: [32, 160] = 192
 ///      - [consumerEscrowed]: [256] = 256
@@ -83,7 +83,7 @@ struct ProofRequest {
     /// @notice Address of node `Wallet` which has escrowed `paymentAmount` `paymentToken`
     Wallet nodeWallet;
     /// @notice Amount of `paymentToken` escrowed by the consumer as successful payment to `nodeWallet`
-    /// @dev Because provers can update their fees, we have to keep a reference to the exact escrowed amount rather than calculate on-demand
+    /// @dev Because verifiers can update their fees, we have to keep a reference to the exact escrowed amount rather than calculate on-demand
     uint256 consumerEscrowed;
 }
 
@@ -168,10 +168,10 @@ contract Coordinator is ReentrancyGuard {
     /// @dev 4-byte signature: `0x2f4ca85b`
     error IntervalCompleted();
 
-    /// @notice Thrown by `finalizeProofValidation()` if called by a `msg.sender` that is unauthorized to finalize proof
-    /// @dev When a proof request is expired, this can be any address; until then, this is the designated `prover` address
-    /// @dev 4-byte signature: `0x8ebcfe1e`
-    error UnauthorizedProver();
+    /// @notice Thrown by `finalizeProofVerification()` if called by a `msg.sender` that is unauthorized to finalize proof
+    /// @dev When a proof request is expired, this can be any address; until then, this is the designated `verifier` address
+    /// @dev 4-byte signature: `0xb9857aa1`
+    error UnauthorizedVerifier();
 
     /// @notice Thrown by `deliverCompute()` if `node` has already responded this `interval`
     /// @dev 4-byte signature: `0x88a21e4f`
@@ -181,7 +181,7 @@ contract Coordinator is ReentrancyGuard {
     /// @dev 4-byte signature: `0x1a00354f`
     error SubscriptionNotFound();
 
-    /// @notice Thrown by `finalizeProofValidation()` if attempting to access a proof request that does not exist
+    /// @notice Thrown by `finalizeProofVerification()` if attempting to access a proof request that does not exist
     /// @dev 4-byte signature: `0x1d68b37c`
     error ProofRequestNotFound();
 
@@ -197,9 +197,9 @@ contract Coordinator is ReentrancyGuard {
     /// @dev 4-byte signature: `0xefb74efe`
     error SubscriptionNotActive();
 
-    /// @notice Thrown by `deliverCompute` if attempting to pay a `IProver`-contract in a token it does not support receiving payments in
-    /// @dev 4-byte signature: `0xa1e29b31`
-    error UnsupportedProverToken();
+    /// @notice Thrown by `deliverCompute` if attempting to pay a `IVerifier`-contract in a token it does not support receiving payments in
+    /// @dev 4-byte signature: `0xe2372799`
+    error UnsupportedVerifierToken();
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -249,7 +249,7 @@ contract Coordinator is ReentrancyGuard {
     /// @param paymentToken If providing payment for compute, payment token address (address(0) for ETH, else ERC20 contract address)
     /// @param paymentAmount If providing payment for compute, payment in `paymentToken` per compute request fulfillment
     /// @param wallet If providing payment for compute, Infernet `Wallet` address; `msg.sender` must be approved spender
-    /// @param prover optional prover contract to restrict payment based on response proof verification
+    /// @param verifier optional verifier contract to restrict payment based on response proof verification
     /// @return subscription ID
     function createSubscription(
         string memory containerId,
@@ -260,7 +260,7 @@ contract Coordinator is ReentrancyGuard {
         address paymentToken,
         uint256 paymentAmount,
         address wallet,
-        address prover
+        address verifier
     ) external returns (uint32) {
         // Get subscription id and increment
         // Unlikely this will ever overflow so we can toss in unchecked
@@ -281,7 +281,7 @@ contract Coordinator is ReentrancyGuard {
             period: period,
             containerId: keccak256(abi.encode(containerId)),
             lazy: lazy,
-            prover: payable(prover),
+            verifier: payable(verifier),
             paymentAmount: paymentAmount,
             paymentToken: paymentToken,
             wallet: payable(wallet)
@@ -307,7 +307,7 @@ contract Coordinator is ReentrancyGuard {
         // Set `activeAt` to max type(uint32)
         // While we could delete the subscription itself (and in previous versions of Infernet this was done),
         // it is net cheaper on average to simply invalidate via `activeAt` instead, to allow use of `Subscription`
-        // parameters during prover proof validation payout (since that path is to called with greater frequency)
+        // parameters during verifier proof verification payout (since that path is to called with greater frequency)
         subscriptions[subscriptionId].activeAt = type(uint32).max;
 
         // Emit cancellation
@@ -433,33 +433,33 @@ contract Coordinator is ReentrancyGuard {
             tokenAvailable -= paidToProtocol;
             consumer.cTransfer(subscription.owner, subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
 
-            // If no prover specified as precondition to payment fulfillment
-            if (subscription.prover == address(0)) {
+            // If no verifier specified as precondition to payment fulfillment
+            if (subscription.verifier == address(0)) {
                 // Immediately process remaining payment from consumer to node
                 consumer.cTransfer(subscription.owner, subscription.paymentToken, nodeWallet, tokenAvailable);
-                // Else, prover specified as precondition to payment fulfillment
+                // Else, verifier specified as precondition to payment fulfillment
             } else {
-                // Setup prover contract
-                IProver prover = IProver(subscription.prover);
+                // Setup verifier contract
+                IVerifier verifier = IVerifier(subscription.verifier);
 
-                // Check if prover accepts `paymentToken`
-                if (!prover.isSupportedToken(subscription.paymentToken)) {
-                    revert UnsupportedProverToken();
+                // Check if verifier accepts `paymentToken`
+                if (!verifier.isSupportedToken(subscription.paymentToken)) {
+                    revert UnsupportedVerifierToken();
                 }
 
-                // Collect prover fee
-                uint256 proverFee = prover.fee(subscription.paymentToken);
+                // Collect verifier fee
+                uint256 verifierFee = verifier.fee(subscription.paymentToken);
 
-                // Calculate protocol fee paid by prover
-                tokenAvailable -= proverFee;
-                paidToProtocol = _calculateFee(proverFee, protocolFee);
+                // Calculate protocol fee paid by verifier
+                tokenAvailable -= verifierFee;
+                paidToProtocol = _calculateFee(verifierFee, protocolFee);
 
-                // Pay protocol on behalf of prover
+                // Pay protocol on behalf of verifier
                 consumer.cTransfer(subscription.owner, subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
 
-                // Pay prover (prover fee - paid protocol fee)
+                // Pay verifier (verifier fee - paid protocol fee)
                 consumer.cTransfer(
-                    subscription.owner, subscription.paymentToken, prover.getWallet(), proverFee - paidToProtocol
+                    subscription.owner, subscription.paymentToken, verifier.getWallet(), verifierFee - paidToProtocol
                 );
 
                 // Setup node wallet
@@ -478,8 +478,8 @@ contract Coordinator is ReentrancyGuard {
                     consumerEscrowed: tokenAvailable
                 });
 
-                // Initiate prover verification
-                prover.requestProofValidation(subscriptionId, interval, msg.sender, proof);
+                // Initiate verifier verification
+                verifier.requestProofVerification(subscriptionId, interval, msg.sender, proof);
             }
         }
 
@@ -516,14 +516,14 @@ contract Coordinator is ReentrancyGuard {
         emit SubscriptionFulfilled(subscriptionId, msg.sender);
     }
 
-    /// @notice Inbound counterpart to `IProver.requestProofValidation()` to process proof validation
-    /// @dev If called by `prover`, accepts `valid` to process payout
+    /// @notice Inbound counterpart to `IVerifier.requestProofVerification()` to process proof verification
+    /// @dev If called by `verifier`, accepts `valid` to process payout
     /// @dev Else, can be called by anyone after 1 week timeout to side in favor of node by default
-    /// @param subscriptionId subscription ID for which proof validation was requested
-    /// @param interval interval of subscription for which proof validation was requested
-    /// @param node node in said interval for which proof validation was requested
+    /// @param subscriptionId subscription ID for which proof verification was requested
+    /// @param interval interval of subscription for which proof verification was requested
+    /// @param node node in said interval for which proof verification was requested
     /// @param valid `true` if proof was valid, else `false`
-    function finalizeProofValidation(uint32 subscriptionId, uint32 interval, address node, bool valid) external {
+    function finalizeProofVerification(uint32 subscriptionId, uint32 interval, address node, bool valid) external {
         // Collect proof request
         bytes32 key = keccak256(abi.encode(subscriptionId, interval, node));
         ProofRequest memory request = proofRequests[key];
@@ -540,11 +540,11 @@ contract Coordinator is ReentrancyGuard {
         request.nodeWallet.cUnlock(node, sub.paymentToken, sub.paymentAmount);
         Wallet(sub.wallet).cUnlock(sub.owner, sub.paymentToken, request.consumerEscrowed);
 
-        // If proof validation period is still active
+        // If proof verification period is still active
         if (block.timestamp < request.expiry) {
-            // If caller is not prover, revert
-            if (sub.prover != msg.sender) {
-                revert UnauthorizedProver();
+            // If caller is not verifier, revert
+            if (sub.verifier != msg.sender) {
+                revert UnauthorizedVerifier();
             }
 
             // If proof is valid
@@ -558,7 +558,7 @@ contract Coordinator is ReentrancyGuard {
                 // Slash node
                 request.nodeWallet.cTransfer(node, sub.paymentToken, sub.wallet, sub.paymentAmount);
             }
-            // Else, if proof validation period expired
+            // Else, if proof verification period expired
         } else {
             // Process payment to node
             Wallet(sub.wallet).cTransfer(

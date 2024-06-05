@@ -180,7 +180,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Deliver subscription from ALICE
@@ -230,7 +230,7 @@ contract InboxTest is Test, IInboxEvents, CoordinatorConstants {
             NO_PAYMENT_TOKEN,
             0,
             NO_WALLET,
-            NO_PROVER
+            NO_VERIFIER
         );
 
         // Deliver subscription from ALICE

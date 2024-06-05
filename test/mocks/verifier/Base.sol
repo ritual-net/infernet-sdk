@@ -4,12 +4,12 @@ pragma solidity ^0.8.4;
 import {ERC20} from "solady/tokens/ERC20.sol";
 import {Registry} from "../../../src/Registry.sol";
 import {Coordinator} from "../../../src/Coordinator.sol";
-import {IProver} from "../../../src/payments/IProver.sol";
+import {IVerifier} from "../../../src/payments/IVerifier.sol";
 
-/// @title BaseProver
-/// @notice Implements all necessary `IProver` functions + some utility functions, except for `requestProofValidation()`
-/// @dev Useful utility to be inherited by mock provers downstream
-abstract contract BaseProver is IProver {
+/// @title BaseVerifier
+/// @notice Implements all necessary `IVerifier` functions + some utility functions, except for `requestProofVerification()`
+/// @dev Useful utility to be inherited by mock verifiers downstream
+abstract contract BaseVerifier is IVerifier {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
@@ -22,7 +22,7 @@ abstract contract BaseProver is IProver {
                                 MUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice token address => prover fee
+    /// @notice token address => verifier fee
     mapping(address => uint256) private tokenFees;
 
     /// @notice token address => is supported payment token
@@ -32,7 +32,7 @@ abstract contract BaseProver is IProver {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Create new BaseProver
+    /// @notice Create new BaseVerifier
     /// @param registry registry address
     constructor(Registry registry) {
         // Collect coordinator from registry
@@ -43,18 +43,18 @@ abstract contract BaseProver is IProver {
                            INHERITED FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Implements `IProver.getWallet()`
+    /// @notice Implements `IVerifier.getWallet()`
     /// @dev Simply returns current address as recipient
     function getWallet() external view returns (address) {
         return address(this);
     }
 
-    /// @notice Implements `IProver.isSupportedToken()`
+    /// @notice Implements `IVerifier.isSupportedToken()`
     function isSupportedToken(address token) external view returns (bool) {
         return supportedTokens[token];
     }
 
-    /// @notice Impelments `IProver.fee()`
+    /// @notice Impelments `IVerifier.fee()`
     function fee(address token) external view returns (uint256) {
         return tokenFees[token];
     }
