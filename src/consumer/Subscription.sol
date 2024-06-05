@@ -28,7 +28,7 @@ abstract contract SubscriptionConsumer is BaseConsumer {
     /// @param paymentToken If providing payment for compute, payment token address (address(0) for ETH, else ERC20 contract address)
     /// @param paymentAmount If providing payment for compute, payment in `paymentToken` per compute request fulfillment
     /// @param wallet If providing payment for compute, Infernet `Wallet` address; this contract must be approved spender of `Wallet`
-    /// @param prover optional prover contract to restrict payment based on response proof verification
+    /// @param verifier optional verifier contract to restrict payment based on response proof verification
     /// @return subscription ID of newly-created subscription
     function _createComputeSubscription(
         string memory containerId,
@@ -39,10 +39,10 @@ abstract contract SubscriptionConsumer is BaseConsumer {
         address paymentToken,
         uint256 paymentAmount,
         address wallet,
-        address prover
+        address verifier
     ) internal returns (uint32) {
         return COORDINATOR.createSubscription(
-            containerId, frequency, period, redundancy, lazy, paymentToken, paymentAmount, wallet, prover
+            containerId, frequency, period, redundancy, lazy, paymentToken, paymentAmount, wallet, verifier
         );
     }
 

@@ -120,7 +120,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
             period: 0,
             containerId: HASHED_MOCK_CONTAINER_ID,
             lazy: false,
-            prover: payable(NO_PROVER),
+            verifier: payable(NO_VERIFIER),
             paymentAmount: 0,
             paymentToken: NO_PAYMENT_TOKEN,
             wallet: payable(NO_WALLET)
@@ -173,7 +173,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
         assertEq(sub.lazy, actual.lazy);
-        assertEq(sub.prover, actual.prover);
+        assertEq(sub.verifier, actual.verifier);
         assertEq(sub.paymentToken, actual.paymentToken);
         assertEq(sub.paymentAmount, actual.paymentAmount);
         assertEq(sub.wallet, actual.wallet);
@@ -268,7 +268,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
         assertEq(sub.period, actual.period);
         assertEq(sub.containerId, actual.containerId);
         assertEq(sub.lazy, actual.lazy);
-        assertEq(sub.prover, actual.prover);
+        assertEq(sub.verifier, actual.verifier);
         assertEq(sub.paymentToken, actual.paymentToken);
         assertEq(sub.paymentAmount, actual.paymentAmount);
         assertEq(sub.wallet, actual.wallet);

@@ -105,7 +105,7 @@ Ignores self-explanatory files:
 │   │   └── Delegator.sol # Delegated compute pattern (w/ EIP712Coordinator)
 │   ├── payments
 │   │   ├── Fee.sol # Protocol fee registry
-│   │   ├── IProver.sol # Prover interface (implemented downstream)
+│   │   ├── IVerifier.sol # Verifier interface (implemented downstream)
 │   │   ├── Wallet.sol # Escrow wallet
 │   │   └── WalletFactory.sol # Wallet factory
 │   └── utility
@@ -141,7 +141,7 @@ Ignores self-explanatory files:
         │   ├── DelegatorCallback.sol
         │   ├── DelegatorSubscription.sol
         │   └── Subscription.sol
-        └── prover
+        └── verifier
             ├── Atomic.sol
             ├── Base.sol
             └── Optimistic.sol

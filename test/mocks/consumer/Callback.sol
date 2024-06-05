@@ -33,7 +33,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         address paymentToken,
         uint256 paymentAmount,
         address wallet,
-        address prover
+        address verifier
     ) external returns (uint32) {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
@@ -42,7 +42,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
 
         // Request off-chain container compute
         uint32 actualSubscriptionID =
-            _requestCompute(containerId, inputs, redundancy, paymentToken, paymentAmount, wallet, prover);
+            _requestCompute(containerId, inputs, redundancy, paymentToken, paymentAmount, wallet, verifier);
 
         // Assert ID expectations
         assertEq(expectedSubscriptionID, actualSubscriptionID);
@@ -61,7 +61,7 @@ contract MockCallbackConsumer is MockBaseConsumer, CallbackConsumer, StdAssertio
         assertEq(sub.paymentToken, paymentToken);
         assertEq(sub.paymentAmount, paymentAmount);
         assertEq(sub.wallet, wallet);
-        assertEq(sub.prover, prover);
+        assertEq(sub.verifier, verifier);
         assertEq(subscriptionInputs[actualSubscriptionID], inputs);
 
         // Explicitly return subscription ID

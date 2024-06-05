@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {BaseProver} from "./Base.sol";
+import {BaseVerifier} from "./Base.sol";
 import {Registry} from "../../../src/Registry.sol";
 
-/// @title MockOptimisticProver
-/// @notice Implements a mock optimistic prover contract that returns some status after period of non-atomic delay (via `mockDeliverProof()`)
-contract MockOptimisticProver is BaseProver {
+/// @title MockOptimisticVerifier
+/// @notice Implements a mock optimistic verifier contract that returns some status after period of non-atomic delay (via `mockDeliverProof()`)
+contract MockOptimisticVerifier is BaseVerifier {
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Create new AtomicProver
+    /// @notice Create new OptimisticVerifier
     /// @param registry registry address
-    constructor(Registry registry) BaseProver(registry) {}
+    constructor(Registry registry) BaseVerifier(registry) {}
 
     /*//////////////////////////////////////////////////////////////
                            INHERITED FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Implements `IProver.requestProofValidation()`
-    function requestProofValidation(uint32 subscriptionId, uint32 interval, address node, bytes calldata proof)
+    /// @notice Implements `IVerifier.requestProofVerification()`
+    function requestProofVerification(uint32 subscriptionId, uint32 interval, address node, bytes calldata proof)
         external
     {
         // Do nothing
@@ -31,8 +31,8 @@ contract MockOptimisticProver is BaseProver {
                            UTILITY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Mocks `COORDINATOR.finalizeProofValidation()`, allowing non-atomic submissions of proof validity
+    /// @notice Mocks `COORDINATOR.finalizeProofVerification()`, allowing non-atomic submissions of proof validity
     function mockDeliverProof(uint32 subscriptionId, uint32 interval, address node, bool valid) external {
-        COORDINATOR.finalizeProofValidation(subscriptionId, interval, node, valid);
+        COORDINATOR.finalizeProofVerification(subscriptionId, interval, node, valid);
     }
 }

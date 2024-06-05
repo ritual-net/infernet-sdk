@@ -36,7 +36,7 @@ abstract contract CallbackConsumer is BaseConsumer {
     /// @param paymentToken If providing payment for compute, payment token address (address(0) for ETH, else ERC20 contract address)
     /// @param paymentAmount If providing payment for compute, payment in `paymentToken` per compute request fulfillment
     /// @param wallet If providing payment for compute, Infernet `Wallet` address; this contract must be approved spender of `Wallet`
-    /// @param prover optional prover contract to restrict payment based on response proof verification
+    /// @param verifier optional verifier contract to restrict payment based on response proof verification
     /// @return subscription ID of newly-created one-time subscription
     function _requestCompute(
         string memory containerId,
@@ -45,7 +45,7 @@ abstract contract CallbackConsumer is BaseConsumer {
         address paymentToken,
         uint256 paymentAmount,
         address wallet,
-        address prover
+        address verifier
     ) internal returns (uint32) {
         // Create one-time subscription at coordinator
         uint32 subscriptionId = COORDINATOR.createSubscription(
@@ -59,7 +59,7 @@ abstract contract CallbackConsumer is BaseConsumer {
             paymentAmount,
             wallet,
             // Optional proof verification
-            prover
+            verifier
         );
 
         // Store inputs by subscriptionId (to be retrieved by off-chain Infernet nodes)
