@@ -131,7 +131,7 @@ abstract contract CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEve
 
         // Initialize contracts
         (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,, WalletFactory walletFactory) =
-            LibDeploy.deployContracts(initialNonce, mockProtocolWalletAddress, MOCK_PROTOCOL_FEE);
+            LibDeploy.deployContracts(address(this), initialNonce, mockProtocolWalletAddress, MOCK_PROTOCOL_FEE);
 
         // Initialize mock protocol wallet
         PROTOCOL = new MockProtocol(registry);

@@ -71,7 +71,7 @@ contract EIP712CoordinatorTest is Test, CoordinatorConstants, ICoordinatorEvents
 
         // Initialize contracts
         (Registry registry, EIP712Coordinator coordinator, Inbox inbox,,,) =
-            LibDeploy.deployContracts(initialNonce, mockProtocolWalletAddress, MOCK_PROTOCOL_FEE);
+            LibDeploy.deployContracts(address(this), initialNonce, mockProtocolWalletAddress, MOCK_PROTOCOL_FEE);
 
         // Initialize mock protocol wallet
         PROTOCOL = new MockProtocol(registry);

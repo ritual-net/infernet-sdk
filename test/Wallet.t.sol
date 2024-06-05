@@ -29,7 +29,7 @@ contract WalletTest is Test {
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry,,,,,) = LibDeploy.deployContracts(initialNonce, address(0), 0);
+        (Registry registry,,,,,) = LibDeploy.deployContracts(address(this), initialNonce, address(0), 0);
 
         // Assign contracts
         REGISTRY = registry;

@@ -43,7 +43,7 @@ contract ReaderTest is Test, CoordinatorConstants {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
         (Registry registry, EIP712Coordinator coordinator,, Reader reader,,) =
-            LibDeploy.deployContracts(initialNonce, address(0), 0);
+            LibDeploy.deployContracts(address(this), initialNonce, address(0), 0);
 
         // Assign to internal
         COORDINATOR = coordinator;

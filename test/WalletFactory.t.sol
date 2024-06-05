@@ -27,7 +27,8 @@ contract WalletFactoryTest is Test {
     function setUp() public {
         // Initialize contracts
         uint256 initialNonce = vm.getNonce(address(this));
-        (Registry registry,,,,, WalletFactory walletFactory) = LibDeploy.deployContracts(initialNonce, address(0), 0);
+        (Registry registry,,,,, WalletFactory walletFactory) =
+            LibDeploy.deployContracts(address(this), initialNonce, address(0), 0);
 
         // Assign contracts
         REGISTRY = registry;
