@@ -2,12 +2,14 @@
 pragma solidity ^0.8.4;
 
 import {Inbox} from "../src/Inbox.sol";
+import {Fee} from "../src/payments/Fee.sol";
 import {Script} from "forge-std/Script.sol";
 import {Registry} from "../src/Registry.sol";
 import {console} from "forge-std/Console.sol";
 import {Reader} from "../src/utility/Reader.sol";
 import {LibDeploy} from "../test/lib/LibDeploy.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
+import {WalletFactory} from "../src/payments/WalletFactory.sol";
 
 /// @title Deploy
 /// @notice Deploys Infernet SDK to destination chain defined in environment
