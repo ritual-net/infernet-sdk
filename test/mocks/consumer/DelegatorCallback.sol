@@ -11,10 +11,10 @@ contract MockDelegatorCallbackConsumer is Delegator, MockCallbackConsumer {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockDelegatorCallbackConsumer
-    /// @param _coordinator coordinator address
-    /// @param _signer delegated signer address
-    constructor(address _coordinator, address _signer) MockCallbackConsumer(_coordinator) Delegator(_signer) {}
+    /// @notice Create new MockDelegatorCallbackConsumer
+    /// @param registry registry address
+    /// @param signer delegated signer address
+    constructor(address registry, address signer) MockCallbackConsumer(registry) Delegator(signer) {}
 
     /*//////////////////////////////////////////////////////////////
                            INHERITED FUNCTIONS
@@ -22,10 +22,7 @@ contract MockDelegatorCallbackConsumer is Delegator, MockCallbackConsumer {
 
     /// @notice Update new signer
     /// @param newSigner to update
-    /// @dev Checks signer is updated after calling
     function updateMockSigner(address newSigner) external {
         _updateSigner(newSigner);
-
-        assertEq(signer, newSigner);
     }
 }

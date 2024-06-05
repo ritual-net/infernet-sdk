@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {MockBaseConsumer} from "./Base.sol";
-import {LibStruct} from "../../lib/LibStruct.sol";
+import {InboxItem} from "../../../src/Inbox.sol";
+import {Subscription} from "../../../src/Coordinator.sol";
 import {StdAssertions} from "forge-std/StdAssertions.sol";
+import {MockBaseConsumer, DeliveredOutput} from "./Base.sol";
 import {SubscriptionConsumer} from "../../../src/consumer/Subscription.sol";
 
 /// @title MockSubscriptionConsumer
@@ -20,26 +21,38 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /// Create new MockSubscriptionConsumer
-    /// @param _coordinator coordinator address
-    constructor(address _coordinator) SubscriptionConsumer(_coordinator) {}
+    /// @notice Create new MockSubscriptionConsumer
+    /// @param registry registry address
+    constructor(address registry) SubscriptionConsumer(registry) {}
 
     /*//////////////////////////////////////////////////////////////
                            UTILITY FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Mock interface read an `InboxItem` from `Inbox`
+    /// @param containerId compute container ID
+    /// @param node delivering node address
+    /// @param index item index
+    /// @return inbox item
+    function readMockInbox(bytes32 containerId, address node, uint256 index) external view returns (InboxItem memory) {
+        return INBOX.read(containerId, node, index);
+    }
+
     /// @notice Create new mock subscription
-    /// @dev Parameter interface conforms to same as `SubscriptionConsumer._createContainerSubscription`
+    /// @dev Parameter interface conforms to same as `SubscriptionConsumer._createComputeSubscription`
     /// @dev Augmented with checks
     /// @dev Checks returned subscription ID is serially conforming
     /// @dev Checks subscription stored in coordinator storage conforms to expected, given inputs
     function createMockSubscription(
         string calldata containerId,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
-        uint16 redundancy
+        uint16 redundancy,
+        bool lazy,
+        address paymentToken,
+        uint256 paymentAmount,
+        address wallet,
+        address verifier
     ) external returns (uint32) {
         // Get current block timestamp
         uint256 currentTimestamp = block.timestamp;
@@ -47,25 +60,28 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         uint32 exepectedSubscriptionID = COORDINATOR.id();
 
         // Create new subscription
-        uint32 actualSubscriptionID =
-            _createComputeSubscription(containerId, maxGasPrice, maxGasLimit, frequency, period, redundancy);
+        uint32 actualSubscriptionID = _createComputeSubscription(
+            containerId, frequency, period, redundancy, lazy, paymentToken, paymentAmount, wallet, verifier
+        );
 
         // Assert ID expectations
         assertEq(exepectedSubscriptionID, actualSubscriptionID);
 
         // Collect subscription from storage
-        LibStruct.Subscription memory sub = LibStruct.getSubscription(COORDINATOR, actualSubscriptionID);
+        Subscription memory sub = COORDINATOR.getSubscription(actualSubscriptionID);
 
         // Assert subscription storage
         assertEq(sub.activeAt, currentTimestamp + period);
         assertEq(sub.owner, address(this));
-        assertEq(sub.maxGasPrice, maxGasPrice);
         assertEq(sub.redundancy, redundancy);
-        assertEq(sub.maxGasLimit, maxGasLimit);
         assertEq(sub.frequency, frequency);
         assertEq(sub.period, period);
-        assertEq(sub.containerId, containerId);
-        assertEq(sub.inputs, "");
+        assertEq(sub.containerId, keccak256(abi.encode(containerId)));
+        assertEq(sub.lazy, lazy);
+        assertEq(sub.paymentToken, paymentToken);
+        assertEq(sub.paymentAmount, paymentAmount);
+        assertEq(sub.wallet, wallet);
+        assertEq(sub.verifier, verifier);
 
         // Explicitly return subscription ID
         return actualSubscriptionID;
@@ -78,10 +94,10 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     function cancelMockSubscription(uint32 subscriptionId) external {
         _cancelComputeSubscription(subscriptionId);
 
-        // Get subscription owner & assert zeroed-out
-        address expected = address(0);
-        (address actual,,,,,,,,) = COORDINATOR.subscriptions(subscriptionId);
-        assertEq(actual, expected);
+        // Assert maxxed out subscription `activeAt`
+        uint32 expected = type(uint32).max;
+        Subscription memory actual = COORDINATOR.getSubscription(subscriptionId);
+        assertEq(actual.activeAt, expected);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -100,6 +116,7 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
     }
 
     /// @notice Overrides internal function, pushing received response to delivered outputs map
+    /// @dev Allows further overriding downstream (useful for `Allowlist` testing)
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -107,8 +124,10 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
-    ) internal override {
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
+    ) internal virtual override {
         // Log delivered output
         outputs[subscriptionId][interval][redundancy] = DeliveredOutput({
             subscriptionId: subscriptionId,
@@ -117,7 +136,9 @@ contract MockSubscriptionConsumer is MockBaseConsumer, SubscriptionConsumer, Std
             node: node,
             input: input,
             output: output,
-            proof: proof
+            proof: proof,
+            containerId: containerId,
+            index: index
         });
     }
 }

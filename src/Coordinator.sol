@@ -1,69 +1,110 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {Manager} from "./Manager.sol";
+import {Inbox} from "./Inbox.sol";
+import {Fee} from "./payments/Fee.sol";
+import {Registry} from "./Registry.sol";
+import {Wallet} from "./payments/Wallet.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
+import {IVerifier} from "./payments/IVerifier.sol";
+import {WalletFactory} from "./payments/WalletFactory.sol";
+import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
+
+/*//////////////////////////////////////////////////////////////
+                            PUBLIC STRUCTS
+//////////////////////////////////////////////////////////////*/
+
+/// @notice A subscription is the fundamental unit of Infernet
+/// @dev A subscription represents some request configuration for off-chain compute via containers on Infernet nodes
+/// @dev A subscription with `frequency == 1` is a one-time subscription (a callback)
+/// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
+/// @dev Tightly-packed struct:
+///      - [owner, activeAt, period, frequency]: [160, 32 32, 32] = 256
+///      - [redundancy, containerId, lazy, verifier]: [16, 32, 8, 160] = 216
+///      - [paymentAmount]: [256] = 256
+///      - [paymentToken]: [160] = 160
+///      - [wallet]: [160] = 160
+struct Subscription {
+    /// @notice Subscription owner + recipient
+    /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
+    address owner;
+    /// @notice Timestamp when subscription is first active and an off-chain Infernet node can respond
+    /// @dev When `period == 0`, the subscription is immediately active
+    /// @dev When `period > 0`, subscription is active at `createdAt + period`
+    /// @dev Cancelled subscriptions update `activeAt` to `type(uint32).max` effectively restricting all future submissions
+    uint32 activeAt;
+    /// @notice Time, in seconds, between each subscription interval
+    /// @dev At worst, assuming subscription occurs once/year << uint32
+    uint32 period;
+    /// @notice Number of times a subscription is processed
+    /// @dev At worst, assuming 30 req/min * 60 min * 24 hours * 365 days * 10 years << uint32
+    uint32 frequency;
+    /// @notice Number of unique nodes that can fulfill a subscription at each `interval`
+    /// @dev uint16 allows for >255 nodes (uint8) but <65,535
+    uint16 redundancy;
+    /// @notice Container identifier used by off-chain Infernet nodes to determine which container is used to fulfill a subscription
+    /// @dev Represented as fixed size hash of stringified list of containers
+    /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
+    /// @dev Better represented by a string[] type but constrained to hash(string) to keep struct and functions simple
+    bytes32 containerId;
+    /// @notice `true` if container compute responses lazily stored as an `InboxItem`(s) in `Inbox`, else `false`
+    /// @dev When `true`, container compute outputs are stored in `Inbox` and not delivered eagerly to a consumer
+    /// @dev When `false`, container compute outputs are not stored in `Inbox` and are delivered eagerly to a consumer
+    bool lazy;
+    /// @notice Optional verifier contract to restrict subscription payment on the basis of proof verification
+    /// @dev If `address(0)`, we assume that no proof contract is necessary, and disperse supplied payment immediately
+    /// @dev If verifier contract is supplied, it must implement the `IVerifier` interface
+    /// @dev Eager verifier contracts disperse payment immediately to relevant `Wallet`(s)
+    /// @dev Lazy verifier contracts disperse payment after a delay (max. 1-week) to relevant `Wallet`(s)
+    /// @dev Notice that consumer contracts can still independently implement their own 0-cost proof verification within their contracts
+    address payable verifier;
+    /// @notice Optional amount to pay in `paymentToken` each time a subscription is processed
+    /// @dev If `0`, subscription has no associated payment
+    /// @dev uint256 since we allow `paymentToken`(s) to have arbitrary ERC20 implementations (unknown `decimal`s)
+    /// @dev In theory, this could be a {dynamic pricing mechanism, reverse auction, etc.} but kept simple for now (abstractions can be built later)
+    uint256 paymentAmount;
+    /// @notice Optional payment token
+    /// @dev If `address(0)`, payment is in Ether (or no payment in conjunction with `paymentAmount == 0`)
+    /// @dev Else, `paymentToken` must be an ERC20-compatible token contract
+    address paymentToken;
+    /// @notice Optional `Wallet` to pay for compute payments; `owner` must be approved spender
+    /// @dev Defaults to `address(0)` when no payment specified
+    address payable wallet;
+}
+
+/// @notice A ProofRequest is a request made to a verifier contract to validate some proof bytes
+/// @dev Tightly-packed struct
+///      - [expiry, nodeWallet]: [32, 160] = 192
+///      - [consumerEscrowed]: [256] = 256
+struct ProofRequest {
+    /// @notice Proof request expiration
+    /// @dev Set to block.timestamp (time of proof request initiation) + 1 week window
+    uint32 expiry;
+    /// @notice Address of node `Wallet` which has escrowed `paymentAmount` `paymentToken`
+    Wallet nodeWallet;
+    /// @notice Amount of `paymentToken` escrowed by the consumer as successful payment to `nodeWallet`
+    /// @dev Because verifiers can update their fees, we have to keep a reference to the exact escrowed amount rather than calculate on-demand
+    uint256 consumerEscrowed;
+}
 
 /// @title Coordinator
 /// @notice Coordination layer between consuming smart contracts and off-chain Infernet nodes
+/// @dev Implements `ReentrancyGuard` to prevent reentrancy in `deliverCompute`
 /// @dev Allows creating and deleting `Subscription`(s)
-/// @dev Allows nodes with `Manager.NodeStatus.Active` to deliver subscription outputs via off-chain container compute
-contract Coordinator is Manager {
+/// @dev Allows any address (a `node`) to deliver susbcription outputs via off-chain container compute
+contract Coordinator is ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
-                                STRUCTS
+                               IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice A subscription is the fundamental unit of Infernet
-    /// @dev A subscription represents some request configuration for off-chain compute via containers on Infernet nodes
-    /// @dev A subscription with `frequency == 1` is a one-time subscription (a callback)
-    /// @dev A subscription with `frequency > 1` is a recurring subscription (many callbacks)
-    /// @dev Tightly-packed struct:
-    ///      - [owner, activeAt, period, frequency]: [32, 160, 32, 32] = 256
-    ///      - [redundancy, maxGasPrice, maxGasLimit]: [16, 48, 32] = 96
-    struct Subscription {
-        /// @notice Subscription owner + recipient
-        /// @dev This is the address called to fulfill a subscription request and must inherit `BaseConsumer`
-        /// @dev Default initializes to `address(0)`
-        address owner;
-        /// @notice Timestamp when subscription is first active and an off-chain Infernet node can respond
-        /// @dev When `period == 0`, the subscription is immediately active
-        /// @dev When `period > 0`, subscription is active at `createdAt + period`
-        uint32 activeAt;
-        /// @notice Time, in seconds, between each subscription interval
-        /// @dev At worst, assuming subscription occurs once/year << uint32
-        uint32 period;
-        /// @notice Number of times a subscription is processed
-        /// @dev At worst, assuming 30 req/min * 60 min * 24 hours * 365 days * 10 years << uint32
-        uint32 frequency;
-        /// @notice Number of unique nodes that can fulfill a subscription at each `interval`
-        /// @dev uint16 allows for >255 nodes (uint8) but <65,535
-        uint16 redundancy;
-        /// @notice Max gas price in wei paid by an Infernet node when fulfilling callback
-        /// @dev uint40 caps out at ~1099 gwei, uint48 allows up to ~281K gwei
-        uint48 maxGasPrice;
-        /// @notice Max gas limit in wei used by an Infernet node when fulfilling callback
-        /// @dev Must be at least equal to the gas limit of your receiving function execution + DELIVERY_OVERHEAD_WEI
-        /// @dev uint24 is too small at ~16.7M (<30M mainnet gas limit), but uint32 is more than enough (~4.2B wei)
-        uint32 maxGasLimit;
-        /// @notice Container identifier used by off-chain Infernet nodes to determine which container is used to fulfill a subscription
-        /// @dev Can be used to specify a linear DAG of containers by seperating container names with a "," delimiter ("A,B,C")
-        /// @dev Better represented by a string[] type but constrained to string to keep struct and functions simple
-        string containerId;
-        /// @notice Optional container input parameters
-        /// @dev If left empty, off-chain Infernet nodes call public view fn: `BaseConsumer(owner).getContainerInputs()`
-        bytes inputs;
-    }
+    /// @notice Fee registry contract (used to collect protocol fee)
+    Fee private immutable FEE;
 
-    /*//////////////////////////////////////////////////////////////
-                               CONSTANTS
-    //////////////////////////////////////////////////////////////*/
+    /// @notice Inbox contract (handles lazily storing subscription responses)
+    Inbox private immutable INBOX;
 
-    /// @notice Gas overhead in wei to deliver container compute responses
-    /// @dev This is the additional cost of any validation checks performed within the `Coordinator`
-    ///      before delivering responses to consumer contracts
-    /// @dev A uint16 is sufficient but we are not packing variables so control plane cost is higher because of type
-    ///      casting during operations. Thus, we can just stick to uint256
-    uint256 public constant DELIVERY_OVERHEAD_WEI = 56_600 wei;
+    /// @notice Wallet factory contract (handles validity verification of `Wallet` contracts)
+    WalletFactory private immutable WALLET_FACTORY;
 
     /*//////////////////////////////////////////////////////////////
                                 MUTABLE
@@ -81,12 +122,16 @@ contract Coordinator is Manager {
     /// @dev Limited to type(Subscription.redundancy) == uint16
     /// @dev Technically, this is not required and we can save an SLOAD if we simply add a uint48 to the subscription
     ///      struct that represents 32 bits of the interval -> 16 bits of redundancy count, reset each interval change
-    ///      But, this is a little over the optimization:redability line and would make Subscriptions harder to grok
+    ///      But, this is a little over the optimization:readability line and would make Subscriptions harder to grok
     mapping(bytes32 => uint16) public redundancyCount;
+
+    /// @notice hash(subscriptionId, interval, caller) => proof request
+    mapping(bytes32 => ProofRequest) public proofRequests;
 
     /// @notice subscriptionID => Subscription
     /// @dev 1-indexed, 0th-subscription is empty
-    mapping(uint32 => Subscription) public subscriptions;
+    /// @dev Visibility restricted to `internal` because we expose an explicit `getSubscription` view function that returns `Subscription` struct
+    mapping(uint32 => Subscription) internal subscriptions;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -109,245 +154,113 @@ contract Coordinator is Manager {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if delivering tx with gasPrice > subscription maxGasPrice
-    /// @dev E.g. submitting tx with gas price `10 gwei` when network basefee is `11 gwei`
-    /// @dev 4-byte signature: `0x682bad5a`
-    error GasPriceExceeded();
+    /// @notice Thrown by `deliverCompute()` if attempting to use an invalid `wallet` or one not created by `WalletFactory`
+    /// @dev 4-byte signature: `0x23455ba1`
+    error InvalidWallet();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if delivering tx with consumed gas > subscription maxGasLimit
-    /// @dev E.g. submitting tx with gas consumed `200_000 wei` when max allowed by subscription is `175_000 wei`
-    /// @dev 4-byte signature: `0xbe9179a6`
-    error GasLimitExceeded();
-
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver container compute response for non-current interval
+    /// @notice Thrown by `deliverCompute()` if attempting to deliver container compute response for non-current interval
     /// @dev E.g submitting tx for `interval` < current (period elapsed) or `interval` > current (too early to submit)
     /// @dev 4-byte signature: `0x4db310c3`
     error IntervalMismatch();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if `redundancy` has been met for current `interval`
+    /// @notice Thrown by `deliverCompute()` if `redundancy` has been met for current `interval`
     /// @dev E.g submitting 4th output tx for a subscription with `redundancy == 3`
     /// @dev 4-byte signature: `0x2f4ca85b`
     error IntervalCompleted();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if `node` has already responded this `interval`
+    /// @notice Thrown by `finalizeProofVerification()` if called by a `msg.sender` that is unauthorized to finalize proof
+    /// @dev When a proof request is expired, this can be any address; until then, this is the designated `verifier` address
+    /// @dev 4-byte signature: `0xb9857aa1`
+    error UnauthorizedVerifier();
+
+    /// @notice Thrown by `deliverCompute()` if `node` has already responded this `interval`
     /// @dev 4-byte signature: `0x88a21e4f`
     error NodeRespondedAlready();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to access a subscription that does not exist
+    /// @notice Thrown by `deliverCompute()` if attempting to access a subscription that does not exist
     /// @dev 4-byte signature: `0x1a00354f`
     error SubscriptionNotFound();
+
+    /// @notice Thrown by `finalizeProofVerification()` if attempting to access a proof request that does not exist
+    /// @dev 4-byte signature: `0x1d68b37c`
+    error ProofRequestNotFound();
 
     /// @notice Thrown by `cancelSubscription()` if attempting to modify a subscription not owned by caller
     /// @dev 4-byte signature: `0xa7fba711`
     error NotSubscriptionOwner();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver a completed subscription
+    /// @notice Thrown by `deliverCompute()` if attempting to deliver a completed subscription
     /// @dev 4-byte signature: `0xae6704a7`
     error SubscriptionCompleted();
 
-    /// @notice Thrown by `deliverComputeWithOverhead()` if attempting to deliver a subscription before `activeAt`
+    /// @notice Thrown by `deliverCompute()` if attempting to deliver a subscription before `activeAt`
     /// @dev 4-byte signature: `0xefb74efe`
     error SubscriptionNotActive();
+
+    /// @notice Thrown by `deliverCompute` if attempting to pay a `IVerifier`-contract in a token it does not support receiving payments in
+    /// @dev 4-byte signature: `0xe2372799`
+    error UnsupportedVerifierToken();
+
+    /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initializes new Coordinator
+    /// @param registry registry contract
+    constructor(Registry registry) {
+        // Collect fee contract from registry
+        FEE = Fee(registry.FEE());
+        // Collect inbox contract from registry
+        INBOX = Inbox(registry.INBOX());
+        // Collect wallet factory contract from registry
+        WALLET_FACTORY = WalletFactory(registry.WALLET_FACTORY());
+    }
 
     /*//////////////////////////////////////////////////////////////
                            INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Internal counterpart to `deliverCompute()` w/ ability to set custom gas overhead allowance
-    /// @dev When called by `deliverCompute()`, `callingOverheadWei == 0` because no additional overhead imposed
-    /// @dev When called by `deliverComputeDelegatee()`, `DELEGATEE_OVERHEAD_*_WEI` is imposed
-    /// @param subscriptionId subscription ID to deliver
-    /// @param deliveryInterval subscription `interval` to deliver
-    /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
-    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional container execution proof (or arbitrary metadata)
-    /// @param callingOverheadWei additional overhead gas used for delivery
-    function _deliverComputeWithOverhead(
-        uint32 subscriptionId,
-        uint32 deliveryInterval,
-        bytes calldata input,
-        bytes calldata output,
-        bytes calldata proof,
-        uint256 callingOverheadWei
-    ) internal {
-        // Naively, one would think that loading a subscription into memory via
-        // `Subscription memory subscription = subscriptions[subscriptionId]`
-        // would be cost-effective and most readable.
-
-        // Unfortunately, this is not the case. This function makes no use of
-        // `subscription.containerId` or `subscription.inputs`. Because these
-        // are dynamic types, we are forced to pay to load into memory the length
-        // + content of these parameters. In some cases (say, container input being
-        // 100 uint256's), we are forced to pay 2 SLOAD (length slot containerId, inputs)
-        // + N SLOAD (containerId + inputs byte length / word size) (for example, 100
-        // SLOAD's in the case of 100 uint256's) + N MSTORE (copying into memory)
-        // + memory expansion costs.
-
-        // To avoid this, we can first access memory parameters selectively, copying
-        // just the fixed size params (uint16, etc.) into memory by accessing state via
-        // `subscriptions[subscriptionId].activeAt` syntax.
-
-        // But, with this syntax, while we avoid the significant overhead of copying
-        // from storage, into memory, the unnecessary dynamic parameters, we are now
-        // forced to pay 100 gas for each non-first storage slot read (hot SLOAD).
-
-        // For example, even if accessing two tightly-packed variables in slot 0, we must
-        // pay COLD SLOAD + HOT SLOAD, rather than just COLD SLOAD + MLOAD.
-
-        // To avoid this, we can drop down to assembly and:
-        //      1. Manually SLOAD tightly-packed struct slots
-        //      2. Unpack and MSTORE variables to avoid the hot SLOAD penalty since we
-        //         only copy from storage into memory once (rather than for each variable)
-
-        // Setup parameters in first slot
-        // Note, we could load these variables right before they are used but the MSTORE is cheap and this is cleaner
-        address subOwner;
-        uint32 subActiveAt;
-        uint32 subPeriod;
-        uint32 subFrequency;
-
-        // Store slot identifier for subscriptions[subscriptionId][slot 0]
-        bytes32 storageSlot;
-        assembly ("memory-safe") {
-            // Load address of free-memory pointer
-            let m := mload(0x40)
-
-            // Store subscription ID to first free slot
-            // uint32 automatically consumes full word
-            mstore(m, subscriptionId)
-            // Store subscriptions mapping storage slot (4) to 32 byte (1 word) offset
-            mstore(add(m, 0x20), 4)
-
-            // At this point, memory layout [0 -> 0x20 == subscriptionId, 0x20 -> 0x40 == 4]
-            // Calculate mapping storage slot — hash(key, mapping slot)
-            // Hash data from 0 -> 0x40 (2 words)
-            storageSlot := keccak256(m, 0x40)
-
-            // SLOAD struct data
-            let data := sload(storageSlot)
-
-            // Solidity packs structs right to left (least-significant bits a la little-endian)
-            // MSTORE'ing tightly-packed variables from storage slot data
-            // Erase first 96 bits via AND, grab last 160
-            subOwner := and(data, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)
-            // Grab first 32 bits preceeding owner
-            subActiveAt := and(shr(160, data), 0xFFFFFFFF)
-            // Grab first 32 bits preceeding activeAt
-            subPeriod := and(shr(192, data), 0xFFFFFFFF)
-            // Grab first 32 bits from left
-            subFrequency := shr(224, data)
-        }
-
-        // Revert if subscription does not exist
-        if (subOwner == address(0)) {
-            revert SubscriptionNotFound();
-        }
-
-        // Revert if subscription is not yet active
-        if (block.timestamp < subActiveAt) {
-            revert SubscriptionNotActive();
-        }
-
-        // Calculate subscription interval
-        uint32 interval = getSubscriptionInterval(subActiveAt, subPeriod);
-
-        // Revert if not processing curent interval
-        if (interval != deliveryInterval) {
-            revert IntervalMismatch();
-        }
-
-        // Revert if interval > frequency
-        if (interval > subFrequency) {
-            revert SubscriptionCompleted();
-        }
-
-        // Setup parameters in second slot
-        uint16 subRedundancy;
-        uint48 subMaxGasPrice;
-        uint32 subMaxGasLimit;
-
-        assembly ("memory-safe") {
-            // SLOAD struct data
-            // Second slot is simply offset from first by 1
-            let data := sload(add(storageSlot, 1))
-
-            // MSTORE'ing tightly-packed variables from storage slot data
-            // Grab last 16 bits
-            subRedundancy := and(data, 0xFFFF)
-            // Grab first 48 bits preceeding redundancy
-            subMaxGasPrice := and(shr(16, data), 0xFFFFFFFFFFFF)
-            // Grab first 32 bits from left
-            subMaxGasLimit := and(shr(64, data), 0xFFFFFFFF)
-        }
-
-        // Revert if tx gas price > max subscription allowed
-        if (tx.gasprice > subMaxGasPrice) {
-            revert GasPriceExceeded();
-        }
-
-        // Revert if redundancy requirements for this interval have been met
-        bytes32 key = keccak256(abi.encode(subscriptionId, interval));
-        uint16 numRedundantDeliveries = redundancyCount[key];
-        if (numRedundantDeliveries == subRedundancy) {
-            revert IntervalCompleted();
-        }
-        // Highly unlikely to overflow given incrementing by 1/node
-        unchecked {
-            redundancyCount[key] = numRedundantDeliveries + 1;
-        }
-
-        // Revert if node has already responded this interval
-        key = keccak256(abi.encode(subscriptionId, interval, msg.sender));
-        if (nodeResponded[key]) {
-            revert NodeRespondedAlready();
-        }
-        nodeResponded[key] = true;
-
-        // Deliver container compute output to contract (measuring execution cost)
-        uint256 startingGas = gasleft();
-        BaseConsumer(subOwner).rawReceiveCompute(
-            subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof
-        );
-        uint256 endingGas = gasleft();
-
-        // Revert if gas used > allowed, we can make unchecked:
-        // Gas limit in most networks is usually much below uint256 max, and by this point a decent amount is spent
-        // `callingOverheadWei`, `DELIVERY_OVERHEAD_WEI` both fit in under uint24's
-        // Thus, this operation is unlikely to ever overflow ((uint256 - uint256) + (uint16 + uint24))
-        // Unless the bounds are along the lines of: {startingGas: UINT256_MAX, endingGas: << (callingOverheadWei + DELIVERY_OVERHEAD_WEI)}
-        uint256 executionCost;
-        unchecked {
-            executionCost = startingGas - endingGas + callingOverheadWei + DELIVERY_OVERHEAD_WEI;
-        }
-        if (executionCost > subMaxGasLimit) {
-            revert GasLimitExceeded();
-        }
-
-        // Emit successful delivery
-        emit SubscriptionFulfilled(subscriptionId, msg.sender);
+    /// @notice Given an input `amount`, returns the value of `fee` applied to it
+    /// @param amount to calculate fee on top of
+    /// @param fee to use in calculation
+    /// @return fee amount
+    function _calculateFee(uint256 amount, uint16 fee) internal pure returns (uint256) {
+        // (amount * fee) / 1e5 scaling factor
+        return amount * fee / 10_000;
     }
 
     /*//////////////////////////////////////////////////////////////
                                FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Returns `Subscription` from `subscriptions` mapping, indexed by `subscriptionId`
+    /// @dev Useful utility view function because by default public mappings with struct values return destructured parameters
+    /// @param subscriptionId subscription ID to collect
+    function getSubscription(uint32 subscriptionId) external view returns (Subscription memory) {
+        return subscriptions[subscriptionId];
+    }
+
     /// @notice Creates new subscription
     /// @param containerId compute container identifier used by off-chain Infernet node
-    /// @param inputs optional container inputs
-    /// @param maxGasPrice max gas price in wei paid by an Infernet node when fulfilling callback
-    /// @param maxGasLimit max gas limit in wei paid by an Infernet node in callback tx
     /// @param frequency max number of times to process subscription (i.e, `frequency == 1` is a one-time request)
     /// @param period period, in seconds, at which to progress each responding `interval`
     /// @param redundancy number of unique responding Infernet nodes
+    /// @param lazy whether to lazily store subscription responses
+    /// @param paymentToken If providing payment for compute, payment token address (address(0) for ETH, else ERC20 contract address)
+    /// @param paymentAmount If providing payment for compute, payment in `paymentToken` per compute request fulfillment
+    /// @param wallet If providing payment for compute, Infernet `Wallet` address; `msg.sender` must be approved spender
+    /// @param verifier optional verifier contract to restrict payment based on response proof verification
     /// @return subscription ID
     function createSubscription(
         string memory containerId,
-        bytes calldata inputs,
-        uint48 maxGasPrice,
-        uint32 maxGasLimit,
         uint32 frequency,
         uint32 period,
-        uint16 redundancy
+        uint16 redundancy,
+        bool lazy,
+        address paymentToken,
+        uint256 paymentAmount,
+        address wallet,
+        address verifier
     ) external returns (uint32) {
         // Get subscription id and increment
         // Unlikely this will ever overflow so we can toss in unchecked
@@ -363,13 +276,15 @@ contract Coordinator is Manager {
             // Probably reasonable to keep the overflow protection here given adding 2 uint32's into a uint32
             activeAt: uint32(block.timestamp) + period,
             owner: msg.sender,
-            maxGasPrice: maxGasPrice,
             redundancy: redundancy,
-            maxGasLimit: maxGasLimit,
             frequency: frequency,
             period: period,
-            containerId: containerId,
-            inputs: inputs
+            containerId: keccak256(abi.encode(containerId)),
+            lazy: lazy,
+            verifier: payable(verifier),
+            paymentAmount: paymentAmount,
+            paymentToken: paymentToken,
+            wallet: payable(wallet)
         });
 
         // Emit new subscription
@@ -381,6 +296,7 @@ contract Coordinator is Manager {
 
     /// @notice Cancel a subscription
     /// @dev Must be called by `subscriptions[subscriptionId].owner`
+    /// @dev Cancels subscription by setting `Subscription` `activeAt` to maximum (technically, de-activating)
     /// @param subscriptionId subscription ID to cancel
     function cancelSubscription(uint32 subscriptionId) external {
         // Throw if owner of subscription is not caller
@@ -388,10 +304,14 @@ contract Coordinator is Manager {
             revert NotSubscriptionOwner();
         }
 
-        // Nullify subscription
-        delete subscriptions[subscriptionId];
+        // Set `activeAt` to max type(uint32)
+        // While we could delete the subscription itself (and in previous versions of Infernet this was done),
+        // it is net cheaper on average to simply invalidate via `activeAt` instead, to allow use of `Subscription`
+        // parameters during verifier proof verification payout (since that path is to called with greater frequency)
+        subscriptions[subscriptionId].activeAt = type(uint32).max;
 
         // Emit cancellation
+        // Event can be emitted more than once if cancelling already cancelled subscription
         emit SubscriptionCancelled(subscriptionId);
     }
 
@@ -413,23 +333,240 @@ contract Coordinator is Manager {
         }
     }
 
-    /// @notice Allows nodes with `Manager.NodeStatus.Active` to deliver container compute responses for a subscription
-    /// @dev Re-entering does not work because only active nodes (max 1 response) can call `deliverCompute`
-    /// @dev Re-entering and delivering via a seperate node `msg.sender` works but is ignored in favor of explicit `maxGasLimit`
-    /// @dev For containers without succinctly-verifiable proofs, the `proof` field can be repurposed for arbitrary metadata
-    /// @dev Enforces an overhead delivery cost of `DELIVERY_OVERHEAD_WEI` and `0` additional overhead
+    /// @notice Allows any address (nodes) to deliver container compute responses for a subscription
+    /// @dev Re-entering generally does not work because each node can only call `deliverCompute` once per subscription
+    /// @dev But, you can call `deliverCompute` with a seperate `msg.sender` (in same delivery call) so we optimistically restrict with `nonReentrant`
+    /// @dev When `Subscription`(s) request lazy responses, stores container output in `Inbox`
+    /// @dev When `Subscription`(s) request eager responses, delivers container output directly via `BaseConsumer.rawReceiveCompute()`
     /// @param subscriptionId subscription ID to deliver
     /// @param deliveryInterval subscription `interval` to deliver
-    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both)
+    /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional off-chain container execution proof (or arbitrary metadata)
+    /// @param proof optional container execution proof (or arbitrary metadata)
+    /// @param nodeWallet node wallet (used to receive payments, and put up escrow/slashing funds); msg.sender must be authorized spender of wallet
     function deliverCompute(
         uint32 subscriptionId,
         uint32 deliveryInterval,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
-    ) external onlyActiveNode {
-        _deliverComputeWithOverhead(subscriptionId, deliveryInterval, input, output, proof, 0);
+        bytes calldata proof,
+        address nodeWallet
+    ) public nonReentrant {
+        // In infernet-sdk v0.1.0, loading a subscription into memory was handled
+        // piece-wise in assembly because a Subscription struct contained dynamic
+        // types (forcing an explict, unbounded SLOAD cost to copy dynamic length /
+        // word size bytes).
+
+        // In infernet-sdk v0.2.0, we removed dynamic types in Subscription structs
+        // allowing us to directly copy a subscription into memory. Notice: this is
+        // still not the most optimized approach, given we pay up-front to SLOAD 2
+        // slots, rather than loading 1 slot at a time (subsidizing costs in case
+        // of failure conditions). Still, the additional gas overhead (~500 gas in most
+        // failure cases) is better than poor developer UX and worse readability.
+
+        // Collect subscription
+        Subscription memory subscription = subscriptions[subscriptionId];
+
+        // Revert if subscription does not exist
+        if (subscription.owner == address(0)) {
+            revert SubscriptionNotFound();
+        }
+
+        // Revert if subscription is not yet active
+        if (block.timestamp < subscription.activeAt) {
+            revert SubscriptionNotActive();
+        }
+
+        // Calculate subscription interval
+        uint32 interval = getSubscriptionInterval(subscription.activeAt, subscription.period);
+
+        // Revert if not processing current interval
+        if (interval != deliveryInterval) {
+            revert IntervalMismatch();
+        }
+
+        // Revert if interval > frequency
+        if (interval > subscription.frequency) {
+            revert SubscriptionCompleted();
+        }
+
+        // Revert if redundancy requirements for this interval have been met
+        bytes32 key = keccak256(abi.encode(subscriptionId, interval));
+        uint16 numRedundantDeliveries = redundancyCount[key];
+        if (numRedundantDeliveries == subscription.redundancy) {
+            revert IntervalCompleted();
+        }
+        // Highly unlikely to overflow given incrementing by 1/node
+        unchecked {
+            redundancyCount[key] = numRedundantDeliveries + 1;
+        }
+
+        // Revert if node has already responded this interval
+        key = keccak256(abi.encode(subscriptionId, interval, msg.sender));
+        if (nodeResponded[key]) {
+            revert NodeRespondedAlready();
+        }
+        nodeResponded[key] = true;
+
+        // Handle payments (non-zero payment per subscription fulfillment)
+        if (subscription.paymentAmount > 0) {
+            // Check if subscription wallet is valid and created by WalletFactory
+            if (!WALLET_FACTORY.isValidWallet(subscription.wallet)) {
+                revert InvalidWallet();
+            }
+
+            // Setup consumer wallet
+            Wallet consumer = Wallet(subscription.wallet);
+
+            // Setup initial payment amount
+            uint256 tokenAvailable = subscription.paymentAmount;
+
+            // Collect protocol fee and recipient
+            uint16 protocolFee = FEE.FEE();
+            address protocolFeeRecipient = FEE.FEE_RECIPIENT();
+
+            // Calculate fee as function of subscription payment amount
+            // Imposed as 2 * FEE * AMOUNT (rather than (AMOUNT*FEE + (AMOUNT*0.95 * FEE))); uniform application on base amount
+            uint256 paidToProtocol = _calculateFee(subscription.paymentAmount, protocolFee * 2);
+
+            // Deduct from temporary amount available and pay protocol
+            tokenAvailable -= paidToProtocol;
+            consumer.cTransfer(subscription.owner, subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
+
+            // If no verifier specified as precondition to payment fulfillment
+            if (subscription.verifier == address(0)) {
+                // Immediately process remaining payment from consumer to node
+                consumer.cTransfer(subscription.owner, subscription.paymentToken, nodeWallet, tokenAvailable);
+                // Else, verifier specified as precondition to payment fulfillment
+            } else {
+                // Setup verifier contract
+                IVerifier verifier = IVerifier(subscription.verifier);
+
+                // Check if verifier accepts `paymentToken`
+                if (!verifier.isSupportedToken(subscription.paymentToken)) {
+                    revert UnsupportedVerifierToken();
+                }
+
+                // Collect verifier fee
+                uint256 verifierFee = verifier.fee(subscription.paymentToken);
+
+                // Calculate protocol fee paid by verifier
+                tokenAvailable -= verifierFee;
+                paidToProtocol = _calculateFee(verifierFee, protocolFee);
+
+                // Pay protocol on behalf of verifier
+                consumer.cTransfer(subscription.owner, subscription.paymentToken, protocolFeeRecipient, paidToProtocol);
+
+                // Pay verifier (verifier fee - paid protocol fee)
+                consumer.cTransfer(
+                    subscription.owner, subscription.paymentToken, verifier.getWallet(), verifierFee - paidToProtocol
+                );
+
+                // Setup node wallet
+                Wallet node = Wallet(payable(nodeWallet));
+
+                // Escrow slashable amount from node
+                node.cLock(msg.sender, subscription.paymentToken, subscription.paymentAmount);
+
+                // Escrow remaining payable amount (to node) from consumer
+                consumer.cLock(subscription.owner, subscription.paymentToken, tokenAvailable);
+
+                // Store new proof request
+                proofRequests[key] = ProofRequest({
+                    expiry: uint32(block.timestamp) + 1 weeks,
+                    nodeWallet: node,
+                    consumerEscrowed: tokenAvailable
+                });
+
+                // Initiate verifier verification
+                verifier.requestProofVerification(subscriptionId, interval, msg.sender, proof);
+            }
+        }
+
+        // If delivering subscription lazily
+        if (subscription.lazy) {
+            // First, we must store the container outputs in `Inbox`
+            uint256 index = INBOX.writeViaCoordinator(
+                subscription.containerId, msg.sender, subscriptionId, interval, input, output, proof
+            );
+
+            // Next, we can deliver the subscription w/:
+            // 1. Nullifying container outputs (since we are storing outputs in the `Inbox`)
+            // 2. Providing a pointer to the `Inbox` entry via `containerId`, `index`
+            BaseConsumer(subscription.owner).rawReceiveCompute(
+                subscriptionId,
+                interval,
+                numRedundantDeliveries + 1,
+                msg.sender,
+                "",
+                "",
+                "",
+                subscription.containerId,
+                index
+            );
+        } else {
+            // Else, delivering subscription eagerly
+            // We must ensure `containerId`, `index` are nullified since eagerly delivering container outputs
+            BaseConsumer(subscription.owner).rawReceiveCompute(
+                subscriptionId, interval, numRedundantDeliveries + 1, msg.sender, input, output, proof, bytes32(0), 0
+            );
+        }
+
+        // Emit successful delivery
+        emit SubscriptionFulfilled(subscriptionId, msg.sender);
+    }
+
+    /// @notice Inbound counterpart to `IVerifier.requestProofVerification()` to process proof verification
+    /// @dev If called by `verifier`, accepts `valid` to process payout
+    /// @dev Else, can be called by anyone after 1 week timeout to side in favor of node by default
+    /// @param subscriptionId subscription ID for which proof verification was requested
+    /// @param interval interval of subscription for which proof verification was requested
+    /// @param node node in said interval for which proof verification was requested
+    /// @param valid `true` if proof was valid, else `false`
+    function finalizeProofVerification(uint32 subscriptionId, uint32 interval, address node, bool valid) external {
+        // Collect proof request
+        bytes32 key = keccak256(abi.encode(subscriptionId, interval, node));
+        ProofRequest memory request = proofRequests[key];
+
+        // If proof request does not exist, throw
+        if (request.expiry == 0) {
+            revert ProofRequestNotFound();
+        }
+
+        // Collect associated subscription
+        Subscription memory sub = subscriptions[subscriptionId];
+
+        // Unescrow wallets
+        request.nodeWallet.cUnlock(node, sub.paymentToken, sub.paymentAmount);
+        Wallet(sub.wallet).cUnlock(sub.owner, sub.paymentToken, request.consumerEscrowed);
+
+        // If proof verification period is still active
+        if (block.timestamp < request.expiry) {
+            // If caller is not verifier, revert
+            if (sub.verifier != msg.sender) {
+                revert UnauthorizedVerifier();
+            }
+
+            // If proof is valid
+            if (valid) {
+                // Process payment to node
+                Wallet(sub.wallet).cTransfer(
+                    sub.owner, sub.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+                );
+                // Else, if proof is not valid
+            } else {
+                // Slash node
+                request.nodeWallet.cTransfer(node, sub.paymentToken, sub.wallet, sub.paymentAmount);
+            }
+            // Else, if proof verification period expired
+        } else {
+            // Process payment to node
+            Wallet(sub.wallet).cTransfer(
+                sub.owner, sub.paymentToken, address(request.nodeWallet), request.consumerEscrowed
+            );
+        }
+
+        // Delete proof request (proof processed)
+        delete proofRequests[key];
     }
 }

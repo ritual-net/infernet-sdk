@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Registry} from "./Registry.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
-import {Coordinator} from "./Coordinator.sol";
 import {EIP712} from "solady/utils/EIP712.sol";
 import {Delegator} from "./pattern/Delegator.sol";
+import {Coordinator, Subscription} from "./Coordinator.sol";
 
 /// @title EIP712Coordinator
 /// @notice Coordinator enhanced with ability to created subscriptions via off-chain EIP-712 signature
@@ -21,19 +22,9 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @notice EIP-712 signing domain name
     string public constant EIP712_NAME = "InfernetCoordinator";
 
-    /// @notice Gas overhead in wei to retrieve cached subscriptionId for existing delegatee-created subscription
-    /// @dev A uint16 is sufficient but increases control plane costs. While we can pack this and the subsequent uint24
-    ///      in contract storage to save data plane costs, we prioritize control plane and instead simply use a uint256
-    uint256 public constant DELEGATEE_OVERHEAD_CACHED_WEI = 600 wei;
-
-    /// @notice Gas overhead in wei to create a new subscription via delegatee signature
-    /// @dev Make note that this does not account for gas costs of dynamic inputs (containerId, inputs), just base overhead
-    /// @dev Can fit within uint24, see comment for `DELEGATEE_OVERHEAD_CACHED_WEI` for details
-    uint256 public constant DELEGATEE_OVERHEAD_CREATE_WEI = 91_200 wei;
-
     /// @notice EIP-712 struct(Subscription) typeHash
     bytes32 private constant EIP712_SUBSCRIPTION_TYPEHASH = keccak256(
-        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,string containerId,bytes inputs)"
+        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address verifier,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /// @notice EIP-712 struct(DelegateSubscription) typeHash
@@ -41,7 +32,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @dev The `nonce` represents the nonce of the subscribing contract (sub-owner); prevents signature replay
     /// @dev The `expiry` is when the delegated subscription signature expires and can no longer be used
     bytes32 private constant EIP712_DELEGATE_SUBSCRIPTION_TYPEHASH = keccak256(
-        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,string containerId,bytes inputs)"
+        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address verifier,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -69,6 +60,14 @@ contract EIP712Coordinator is EIP712, Coordinator {
     error SignatureExpired();
 
     /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initializes new EIP712Coordinator
+    /// @param registry registry contract
+    constructor(Registry registry) Coordinator(registry) {}
+
+    /*//////////////////////////////////////////////////////////////
                            OVERRIDE FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
@@ -94,8 +93,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @param v ECDSA recovery id
     /// @param r ECDSA signature output (r)
     /// @param s ECDSA signature output (s)
-    /// @return 0: subscriptionId (if subscription exists, returns existing ID, else returns new ID),
-    ///         1: exists (true if returning existing subscription, else false)
+    /// @return subscription ID (existing or newly-created)
     function createSubscriptionDelegatee(
         uint32 nonce,
         uint32 expiry,
@@ -103,7 +101,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) public returns (uint32, bool) {
+    ) public returns (uint32) {
         // Check if subscription already exists via delegate-created lookup table
         bytes32 key = keccak256(abi.encode(sub.owner, nonce));
         uint32 subscriptionId = delegateCreatedIds[key];
@@ -111,7 +109,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
         // If subscription exists, return existing subscriptionId
         // This implicitly prevents nonce replay because if the nonce was already used, a subscription would exist
         if (subscriptionId != 0) {
-            return (subscriptionId, true);
+            return subscriptionId;
         }
 
         // Else, if subscription does not exist
@@ -137,11 +135,12 @@ contract EIP712Coordinator is EIP712, Coordinator {
                             sub.period,
                             sub.frequency,
                             sub.redundancy,
-                            sub.maxGasPrice,
-                            sub.maxGasLimit,
-                            // Hash dynamic values
-                            keccak256(bytes(sub.containerId)),
-                            keccak256(sub.inputs)
+                            sub.containerId,
+                            sub.lazy,
+                            sub.verifier,
+                            sub.paymentAmount,
+                            sub.paymentToken,
+                            sub.wallet
                         )
                     )
                 )
@@ -153,7 +152,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
         address recoveredSigner = ECDSA.recover(digest, v, r, s);
 
         // Collect delegated signer from subscribing contract
-        address delegatedSigner = Delegator(sub.owner).signer();
+        address delegatedSigner = Delegator(sub.owner).getSigner();
 
         // Verify signatures (recoveredSigner should equal delegatedSigner)
         if (recoveredSigner != delegatedSigner) {
@@ -182,10 +181,10 @@ contract EIP712Coordinator is EIP712, Coordinator {
         }
 
         // Explicitly return subscriptionId
-        return (subscriptionId, false);
+        return subscriptionId;
     }
 
-    /// @notice Allows active nodes to (1) atomically create or collect subscription via signed EIP-712 message,
+    /// @notice Allows nodes to (1) atomically create or collect subscription via signed EIP-712 message,
     ///         (2) deliver container compute responses for created or collected subscription
     /// @param nonce subscribing contract nonce (included in signature)
     /// @param expiry delegated subscription signature expiry (included in signature)
@@ -197,6 +196,7 @@ contract EIP712Coordinator is EIP712, Coordinator {
     /// @param input optional off-chain input recorded by Infernet node (empty, hashed input, processed input, or both)
     /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
     /// @param proof optional container execution proof (or arbitrary metadata)
+    /// @param nodeWallet node wallet (used to receive payments, and put up escrow/slashing funds); msg.sender must be authorized spender of wallet
     function deliverComputeDelegatee(
         uint32 nonce,
         uint32 expiry,
@@ -207,22 +207,13 @@ contract EIP712Coordinator is EIP712, Coordinator {
         uint32 deliveryInterval,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
-    ) external onlyActiveNode {
+        bytes calldata proof,
+        address nodeWallet
+    ) external {
         // Create subscriptionId via delegatee creation + or collect if subscription already exists
-        (uint32 subscriptionId, bool cached) = createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
-
-        // Calculate additional gas overhead imposed from delivering container compute response via delegatee function
-        uint256 overhead;
-        if (cached) {
-            // Subscription exists, cost to retrieve subscriptionId
-            overhead = DELEGATEE_OVERHEAD_CACHED_WEI;
-        } else {
-            // Subscription does not exist, cost to create subscription w/ delegatee signature
-            overhead = DELEGATEE_OVERHEAD_CREATE_WEI;
-        }
+        uint32 subscriptionId = createSubscriptionDelegatee(nonce, expiry, sub, v, r, s);
 
         // Deliver subscription response
-        _deliverComputeWithOverhead(subscriptionId, deliveryInterval, input, output, proof, overhead);
+        deliverCompute(subscriptionId, deliveryInterval, input, output, proof, nodeWallet);
     }
 }

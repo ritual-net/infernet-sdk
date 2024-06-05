@@ -1,20 +1,29 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
+import {Inbox} from "../Inbox.sol";
+import {Registry} from "../Registry.sol";
 import {Coordinator} from "../Coordinator.sol";
 
 /// @title BaseConsumer
 /// @notice Handles receiving container compute responses from Infernet coordinator
-/// @dev Contains a single public entrypoint `rawReceiveCompute` callable by only the Infernet coordinator. Once
-///      call origin is verified, parameters are proxied to internal function `_receiveCompute`
+/// @notice Handles exposing container inputs to Infernet nodes via `getContainerInputs()`
+/// @notice Declares internal `INBOX` reference to allow downstream consumers to read from `Inbox`
+/// @dev Contains a single public entrypoint `rawReceiveCompute` callable only by the Infernet coordinator. Once
+///      msg.sender is verified, parameters are proxied to internal function `_receiveCompute`
+/// @dev Does not inherit `Coordinated` for `rawReceiveCompute` coordinator-permissioned check to keep error scope localized
 abstract contract BaseConsumer {
     /*//////////////////////////////////////////////////////////////
                                IMMUTABLE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Infernet Coordinator
+    /// @notice Coordinator
     /// @dev Internal visibility since COORDINATOR is consumed by inheriting contracts
     Coordinator internal immutable COORDINATOR;
+
+    /// @notice Inbox
+    /// @dev Internal visibility since INBOX can be consumed by inheriting readers
+    Inbox internal immutable INBOX;
 
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
@@ -29,10 +38,12 @@ abstract contract BaseConsumer {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Initialize new BaseConsumer
-    /// @param coordinator coordinator address
-    constructor(address coordinator) {
-        // Setup Coordinator
-        COORDINATOR = Coordinator(coordinator);
+    /// @param registry registry address
+    constructor(address registry) {
+        // Setup Coordinator (via address from canonical registry)
+        COORDINATOR = Coordinator(Registry(registry).COORDINATOR());
+        // Setup Inbox (via address from canonical registry)
+        INBOX = Inbox(Registry(registry).INBOX());
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -46,9 +57,11 @@ abstract contract BaseConsumer {
     /// @param interval subscription interval
     /// @param redundancy after this call succeeds, how many nodes will have delivered a response for this interval
     /// @param node address of responding Infernet node
-    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both)
-    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional off-chain container execution proof (or arbitrary metadata)
+    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both), empty for lazy subscriptions
+    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data), empty for lazy subscriptions
+    /// @param proof optional off-chain container execution proof (or arbitrary metadata), empty for lazy subscriptions
+    /// @param containerId if lazy subscription, subscription compute container ID, else empty
+    /// @param index if lazy subscription, `Inbox` lazy store index, else empty
     function _receiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -56,8 +69,23 @@ abstract contract BaseConsumer {
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) internal virtual {}
+
+    /// @notice View function to broadcast dynamic container inputs to off-chain Infernet nodes
+    /// @dev Developers can modify this function to return dynamic inputs
+    /// @param subscriptionId subscription ID to collect container inputs for
+    /// @param interval subscription interval to collect container inputs for
+    /// @param timestamp timestamp at which container inputs are collected
+    /// @param caller calling address
+    function getContainerInputs(uint32 subscriptionId, uint32 interval, uint32 timestamp, address caller)
+        external
+        view
+        virtual
+        returns (bytes memory)
+    {}
 
     /*//////////////////////////////////////////////////////////////
                                FUNCTIONS
@@ -69,9 +97,11 @@ abstract contract BaseConsumer {
     /// @param interval subscription interval
     /// @param redundancy after this call succeeds, how many nodes will have delivered a response for this interval
     /// @param node address of responding Infernet node
-    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both)
-    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data)
-    /// @param proof optional off-chain container execution proof (or arbitrary metadata)
+    /// @param input optional off-chain container input recorded by Infernet node (empty, hashed input, processed input, or both), empty for lazy subscriptions
+    /// @param output optional off-chain container output (empty, hashed output, processed output, both, or fallback: all encodeable data), empty for lazy subscriptions
+    /// @param proof optional off-chain container execution proof (or arbitrary metadata), empty for lazy subscriptions
+    /// @param containerId if lazy subscription, subscription compute container ID, else empty
+    /// @param index if lazy subscription, `Inbox` lazy store index, else empty
     function rawReceiveCompute(
         uint32 subscriptionId,
         uint32 interval,
@@ -79,7 +109,9 @@ abstract contract BaseConsumer {
         address node,
         bytes calldata input,
         bytes calldata output,
-        bytes calldata proof
+        bytes calldata proof,
+        bytes32 containerId,
+        uint256 index
     ) external {
         // Ensure caller is coordinator
         if (msg.sender != address(COORDINATOR)) {
@@ -87,6 +119,6 @@ abstract contract BaseConsumer {
         }
 
         // Call internal receive function, since caller is validated
-        _receiveCompute(subscriptionId, interval, redundancy, node, input, output, proof);
+        _receiveCompute(subscriptionId, interval, redundancy, node, input, output, proof, containerId, index);
     }
 }

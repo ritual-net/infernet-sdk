@@ -26,13 +26,13 @@ Sort imports by length.
 
 ```solidity
 // Bad
-import {Manager} from "./Manager.sol";
+import {Registry} from "./Registry.sol";
 import {Token} from "./Token.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 
 // Good
 import {Token} from "./Token.sol";
-import {Manager} from "./Manager.sol";
+import {Registry} from "./Registry.sol";
 import {BaseConsumer} from "./consumer/Base.sol";
 ```
 
@@ -42,18 +42,20 @@ Ordering of sections in contract goes:
 
 1. SPDX identifier
 2. Imports
-3. Contract definition
-4. Structs
-5. Enums
-6. Constants
-7. Immutable variables
-8. Mutable variables
-9. Events
-10. Errors
-11. Modifiers
-12. Constructor
-13. Internal functions
-14. External functions
+3. Public structs
+4. Contract definition
+5. Structs
+6. Enums
+7. Constants
+8. Immutable variables
+9. Mutable variables
+10. Events
+11. Errors
+12. Modifiers
+13. Constructor
+14. Internal functions
+15. External functions
+16. Fallback function
 
 Sections are delineated using headers generated from [transmissions11/headers](https://github.com/transmissions11/headers).
 
@@ -110,9 +112,8 @@ Prefer `private` > `internal` > `external` > `public`, to best discretion.
 
 ### Constructor
 
-1. Start constructor parameters with `_underscore`
-2. Prefer typed contract inheritance (eg `Type myContract` over `address myContractAddress`)
-3. Ignore (2) when setting up developer-facing interfaces. It's easier for developers to not have to worry about the initialization.
+1. Prefer typed contract inheritance (eg `Type myContract` over `address myContractAddress`)
+2. Ignore (2) when setting up developer-facing interfaces. It's easier for developers to not have to worry about the initialization.
 
 ### Errors
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.4;
 
-import {Coordinator} from "../../src/Coordinator.sol";
+import {Subscription} from "../../src/Coordinator.sol";
 
 /// @title LibSign
 /// @notice Useful helpers to create and verify EIP-712 signatures
@@ -11,14 +11,14 @@ library LibSign {
                                CONSTANTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice EIP-712 Coordinator.Subscription typeHash
+    /// @notice EIP-712 Subscription typeHash
     bytes32 private constant SUBSCRIPTION_TYPEHASH = keccak256(
-        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,string containerId,bytes inputs)"
+        "Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address verifier,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /// @notice EIP-712 DelegateSubscription typeHash
     bytes32 private constant DELEGATE_SUBSCRIPTION_TYPEHASH = keccak256(
-        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,uint48 maxGasPrice,uint32 maxGasLimit,string containerId,bytes inputs)"
+        "DelegateSubscription(uint32 nonce,uint32 expiry,Subscription sub)Subscription(address owner,uint32 activeAt,uint32 period,uint32 frequency,uint16 redundancy,bytes32 containerId,bool lazy,address verifier,uint256 paymentAmount,address paymentToken,address wallet)"
     );
 
     /*//////////////////////////////////////////////////////////////
@@ -47,10 +47,10 @@ library LibSign {
         );
     }
 
-    /// @notice Generates structHash of a Coordinator.Subscription
+    /// @notice Generates structHash of a Subscription
     /// @param sub subscription
     /// @return structHash(subscription)
-    function getStructHash(Coordinator.Subscription memory sub) public pure returns (bytes32) {
+    function getStructHash(Subscription memory sub) public pure returns (bytes32) {
         return keccak256(
             abi.encode(
                 SUBSCRIPTION_TYPEHASH,
@@ -59,11 +59,12 @@ library LibSign {
                 sub.period,
                 sub.frequency,
                 sub.redundancy,
-                sub.maxGasPrice,
-                sub.maxGasLimit,
-                // Dynamic values must be encoded as hash of contents
-                keccak256(bytes(sub.containerId)),
-                keccak256(sub.inputs)
+                sub.containerId,
+                sub.lazy,
+                sub.verifier,
+                sub.paymentAmount,
+                sub.paymentToken,
+                sub.wallet
             )
         );
     }
@@ -73,11 +74,7 @@ library LibSign {
     /// @param expiry signature expiry
     /// @param sub subscription
     /// @return structHash(struct(nonce, sub))
-    function getStructHash(uint32 nonce, uint32 expiry, Coordinator.Subscription memory sub)
-        public
-        pure
-        returns (bytes32)
-    {
+    function getStructHash(uint32 nonce, uint32 expiry, Subscription memory sub) public pure returns (bytes32) {
         return keccak256(abi.encode(DELEGATE_SUBSCRIPTION_TYPEHASH, nonce, expiry, getStructHash(sub)));
     }
 
@@ -95,7 +92,7 @@ library LibSign {
         address verifyingContract,
         uint32 nonce,
         uint32 expiry,
-        Coordinator.Subscription memory sub
+        Subscription memory sub
     ) external view returns (bytes32) {
         return keccak256(
             abi.encodePacked(
