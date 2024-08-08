@@ -410,6 +410,13 @@ contract Coordinator is ReentrancyGuard {
 
         // Handle payments (non-zero payment per subscription fulfillment)
         if (subscription.paymentAmount > 0) {
+            // Check if node wallet is valid and created by WalletFactory
+            // While this check in theory could be within the verification flow itself (when the node escrows funds),
+            // we keep it here to preserve the readability given following check and early input sanitization
+            if (!WALLET_FACTORY.isValidWallet(nodeWallet)) {
+                revert InvalidWallet();
+            }
+
             // Check if subscription wallet is valid and created by WalletFactory
             if (!WALLET_FACTORY.isValidWallet(subscription.wallet)) {
                 revert InvalidWallet();

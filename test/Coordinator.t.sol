@@ -1119,6 +1119,20 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
     }
 
+    /// @notice Subscription cannot be fulfilled with an invalid `nodeWallet` not created by `WalletFactory`
+    function testSubscriptionCannotBeFulfilledWithInvalidNodeWalletProvenance() public {
+        // Create new wallet with Alice as owner
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+
+        // Create new one-time subscription with 50e6 payout
+        uint32 subId =
+            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, aliceWallet, NO_VERIFIER);
+
+        // Execute response fulfillment from Bob using address(BOB) as nodeWallet
+        vm.expectRevert(Coordinator.InvalidWallet.selector);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, address(BOB));
+    }
+
     /// @notice Subscription cannot be fulfilled if `Wallet` does not approve consumer
     function testSubscriptionCannotBeFulfilledIfSpenderNoAllowance() public {
         // Create new wallets
