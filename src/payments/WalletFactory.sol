@@ -24,6 +24,15 @@ contract WalletFactory {
     mapping(address => bool) private wallets;
 
     /*//////////////////////////////////////////////////////////////
+                                 EVENTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Emitted when a new `Wallet` is created
+    /// @param owner owner of `Wallet`
+    /// @param wallet `Wallet` address
+    event WalletCreated(address indexed owner, address wallet);
+
+    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
@@ -47,6 +56,9 @@ contract WalletFactory {
 
         // Track created wallet
         wallets[address(wallet)] = true;
+
+        // Emit wallet creation
+        emit WalletCreated(initialOwner, address(wallet));
 
         // Return created wallet address
         return address(wallet);
