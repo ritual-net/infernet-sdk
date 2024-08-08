@@ -21,6 +21,7 @@ interface IVerifier {
     function fee(address token) external view returns (uint256);
 
     /// @notice Request proof verification from verification contract
+    /// @dev Verifiers should restrict this function to being called only by `address(COORDINATOR)` to prevent DoS misuse
     /// @dev Verifier contract has to call `verifyProof` on coordinator after a proof verification request
     /// @dev By this point, verifier contract has been paid for proof verification
     /// @param subscriptionId subscription ID

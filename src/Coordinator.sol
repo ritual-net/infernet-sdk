@@ -225,7 +225,7 @@ contract Coordinator is ReentrancyGuard {
     /// @param fee to use in calculation
     /// @return fee amount
     function _calculateFee(uint256 amount, uint16 fee) internal pure returns (uint256) {
-        // (amount * fee) / 1e5 scaling factor
+        // (amount * fee) / 1e4 scaling factor
         return amount * fee / 10_000;
     }
 
@@ -373,7 +373,7 @@ contract Coordinator is ReentrancyGuard {
         }
 
         // Revert if subscription is not yet active
-        if (block.timestamp < subscription.activeAt) {
+        if (uint32(block.timestamp) < subscription.activeAt) {
             revert SubscriptionNotActive();
         }
 
