@@ -27,6 +27,35 @@ contract Wallet is Ownable, Coordinated {
     mapping(address => mapping(address => uint256)) public allowance;
 
     /*//////////////////////////////////////////////////////////////
+                                 EVENTS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Emitted when `Wallet` owner processes a withdrawl
+    /// @param token token withdrawn
+    /// @param amount amount of `token` withdrawn
+    event Withdrawl(address token, uint256 amount);
+
+    /// @notice Emitted when `Wallet` owner approves a `spender` to use `amount` `token`
+    /// @param spender authorized spender of `amount` `token`
+    /// @param token token that can be spent
+    /// @param amount amount of `token` allocated
+    event Approval(address indexed spender, address token, uint256 amount);
+
+    /// @notice Emitted when `Coordinator` locks or unlocks some `amount` `token` in `Wallet` escrow
+    /// @param spender authorized spender of `amount` `token`
+    /// @param token token that can be escrowed
+    /// @param amount amount of `token` escrowed
+    /// @param locked True if locking in escrow, False if unlocking from escrow
+    event Escrow(address indexed spender, address token, uint256 amount, bool locked);
+
+    /// @notice Emitted when `Wallet` transfers some quantity of tokens
+    /// @param spender authorized spender of `amount` `token`
+    /// @param token token transferred
+    /// @param to receipient
+    /// @param amount amount of `token` transferred
+    event Transfer(address indexed spender, address token, address indexed to, uint256 amount);
+
+    /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
@@ -125,6 +154,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Withdraw `amount` `token`(s) to `msg.sender` (`owner`)
         _transferToken(token, msg.sender, amount);
+
+        // Emit withdrawl
+        emit Withdrawl(token, amount);
     }
 
     /// @notice Allows `owner` to approve `spender` as a consumer that can spend `amount` `token`(s) from `Wallet`
@@ -134,6 +166,7 @@ contract Wallet is Ownable, Coordinated {
     /// @param amount approval amount
     function approve(address spender, address token, uint256 amount) external onlyOwner {
         allowance[spender][token] = amount;
+        emit Approval(spender, token, amount);
     }
 
     /// @notice Allows coordinator to transfer `amount` `tokens` to `to` on behalf of `spender`
@@ -152,6 +185,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Transfer token
         _transferToken(token, to, amount);
+
+        // Emit transfer
+        emit Transfer(spender, token, to, amount);
     }
 
     /// @notice Allows coordinator to lock `amount` `token`(s) in escrow on behalf of `spender`
@@ -177,6 +213,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Increment escrow locked balance
         lockedBalance[token] += amount;
+
+        // Emit escrow locking
+        emit Escrow(spender, token, amount, true);
     }
 
     /// @notice Allows coordinator to unlock `amount` `token`(s) from escrow on behalf of `spender`
@@ -197,6 +236,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Increment spender allowance (now that funds are unlocked)
         allowance[spender][token] += amount;
+
+        // Emit escrow unlocking
+        emit Escrow(spender, token, amount, false);
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -9,9 +9,21 @@ import {MockToken} from "./mocks/MockToken.sol";
 import {Wallet} from "../src/payments/Wallet.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
 
+/// @title IWalletEvents
+/// @notice Events emitted by Wallet
+interface IWalletEvents {
+    event Withdrawl(address token, uint256 amount);
+    event Approval(address indexed spender, address token, uint256 amount);
+    event Escrow(address indexed spender, address token, uint256 amount, bool locked);
+    event Transfer(address indexed spender, address token, address indexed to, uint256 amount);
+
+    // Inherited from Ownable
+    event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
+}
+
 /// @title WalletTest
 /// @notice Tests Wallet implementation
-contract WalletTest is Test {
+contract WalletTest is Test, IWalletEvents {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
@@ -66,6 +78,8 @@ contract WalletTest is Test {
 
         // Transfer wallet ownership
         vm.prank(initialOwner);
+        vm.expectEmit(address(wallet));
+        emit OwnershipTransferred(initialOwner, newOwner);
         wallet.transferOwnership(newOwner);
 
         // Assert new ownership
@@ -92,6 +106,8 @@ contract WalletTest is Test {
 
         // Ensure balance is withdrawable
         vm.prank(address(123));
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(0), amount);
         wallet.withdraw(address(0), amount);
 
         // Assert withdrawn balance
@@ -111,6 +127,8 @@ contract WalletTest is Test {
 
         // Ensure balance is withdrawable
         vm.startPrank(address(123));
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(TOKEN), amount);
         wallet.withdraw(address(TOKEN), amount);
 
         // Assert withdrawn balance
@@ -142,6 +160,8 @@ contract WalletTest is Test {
 
         // Increase spender allowance as owner
         vm.startPrank(address(123));
+        vm.expectEmit(address(wallet));
+        emit Approval(spender, address(0), amount);
         wallet.approve(spender, address(0), amount);
         vm.stopPrank();
 
@@ -154,6 +174,8 @@ contract WalletTest is Test {
         wallet.cTransfer(spender, address(0), address(200), amount + 1);
 
         // Then, working transferring correct amount
+        vm.expectEmit(address(wallet));
+        emit Transfer(spender, address(0), address(200), amount);
         wallet.cTransfer(spender, address(0), address(200), amount);
         vm.stopPrank();
 
@@ -172,6 +194,8 @@ contract WalletTest is Test {
         wallet.withdraw(address(0), balance);
 
         // Assert accurate withdraw capacity if removing already transferred amount
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(0), balance - amount);
         wallet.withdraw(address(0), balance - amount);
         assertEq(address(wallet).balance, 0);
         assertEq(address(123).balance, balance - amount);
@@ -201,6 +225,8 @@ contract WalletTest is Test {
 
         // Increase spender allowance as owner
         vm.startPrank(address(123));
+        vm.expectEmit(address(wallet));
+        emit Approval(spender, address(TOKEN), amount);
         wallet.approve(spender, address(TOKEN), amount);
         vm.stopPrank();
 
@@ -209,6 +235,8 @@ contract WalletTest is Test {
 
         // Use coordinator to consume allowance
         vm.startPrank(address(REGISTRY.COORDINATOR()));
+        vm.expectEmit(address(wallet));
+        emit Transfer(spender, address(TOKEN), address(200), amount);
         wallet.cTransfer(spender, address(TOKEN), address(200), amount);
         vm.stopPrank();
 
@@ -227,6 +255,8 @@ contract WalletTest is Test {
         wallet.withdraw(address(TOKEN), balance);
 
         // Assert accurate withdraw capacity if removing already transferred amount
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(TOKEN), balance - amount);
         wallet.withdraw(address(TOKEN), balance - amount);
         assertEq(TOKEN.balanceOf(address(wallet)), 0);
         assertEq(TOKEN.balanceOf(address(123)), balance - amount);
@@ -256,10 +286,30 @@ contract WalletTest is Test {
 
         // Approve spenders for various amounts of spend across tokens
         vm.startPrank(walletOwner);
+
+        // 1
+        vm.expectEmit(address(wallet));
+        emit Approval(spenderOne, address(0), 50 ether);
         wallet.approve(spenderOne, address(0), 50 ether);
+
+        // 2
+        vm.expectEmit(address(wallet));
+        emit Approval(spenderTwo, address(0), 10 ether);
         wallet.approve(spenderTwo, address(0), 10 ether);
+
+        // 3
+        vm.expectEmit(address(wallet));
+        emit Approval(spenderTwo, address(TOKEN), 90e6);
         wallet.approve(spenderTwo, address(TOKEN), 90e6);
+
+        // 4
+        vm.expectEmit(address(wallet));
+        emit Approval(spenderTwo, address(TOKEN), 80e6);
         wallet.approve(spenderTwo, address(TOKEN), 80e6);
+
+        // 5
+        vm.expectEmit(address(wallet));
+        emit Approval(spenderThree, address(TOKEN), 30e6);
         wallet.approve(spenderThree, address(TOKEN), 30e6);
         vm.stopPrank();
 
@@ -273,6 +323,8 @@ contract WalletTest is Test {
 
         // Lock TOKENs from spenderThree
         vm.startPrank(REGISTRY.COORDINATOR());
+        vm.expectEmit(address(wallet));
+        emit Escrow(spenderThree, address(TOKEN), 30e6, true);
         wallet.cLock(spenderThree, address(TOKEN), 30e6); // 100 balance, 30 locked
         vm.stopPrank();
 
@@ -282,6 +334,8 @@ contract WalletTest is Test {
         // Ensure withdrawing up to remaining unlocked balance works
         assertEq(TOKEN.balanceOf(walletOwner), 0);
         vm.startPrank(walletOwner);
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(TOKEN), 70e6);
         wallet.withdraw(address(TOKEN), 70e6); // 30 balance, 30 locked
         assertEq(TOKEN.balanceOf(walletOwner), 70e6);
         TOKEN.transfer(address(wallet), 70e6); // 100 balance, 30 locked
@@ -293,6 +347,8 @@ contract WalletTest is Test {
         wallet.cLock(spenderTwo, address(TOKEN), 80e6);
 
         // Attempt to lock partial allowance of spenderTwo (successfully)
+        vm.expectEmit(address(wallet));
+        emit Escrow(spenderTwo, address(TOKEN), 40e6, true);
         wallet.cLock(spenderTwo, address(TOKEN), 40e6); // 100 balance, 70 locked (40e6 left on spenderTwo, 0e6 on spenderThree)
         vm.stopPrank();
 
@@ -300,6 +356,8 @@ contract WalletTest is Test {
         vm.startPrank(walletOwner);
         vm.expectRevert(Wallet.InsufficientFunds.selector);
         wallet.withdraw(address(TOKEN), 30e6 + 1);
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(TOKEN), 30e6);
         wallet.withdraw(address(TOKEN), 30e6); // 70 balance, 70 locked
         vm.stopPrank();
         assertEq(TOKEN.balanceOf(walletOwner), 30e6);
@@ -308,15 +366,21 @@ contract WalletTest is Test {
         // Partial unlock tokens and assert allowance is incremented
         assertEq(wallet.allowance(spenderTwo, address(TOKEN)), 40e6);
         vm.startPrank(REGISTRY.COORDINATOR());
+        vm.expectEmit(address(wallet));
+        emit Escrow(spenderTwo, address(TOKEN), 20e6, false);
         wallet.cUnlock(spenderTwo, address(TOKEN), 20e6); // 70 balance, 50 locked (60e6 left on spenderTwo, 0e6 on spenderThree)
         assertEq(wallet.allowance(spenderTwo, address(TOKEN)), 60e6);
 
         // Expect failure locking greater than allowance but less than total balance
+        vm.expectEmit(address(wallet));
+        emit Escrow(spenderThree, address(TOKEN), 25e6, false);
         wallet.cUnlock(spenderThree, address(TOKEN), 25e6); // 70 balance, 25 locked (60e6 left on spenderTwo, 25e6 on spenderThree)
         vm.expectRevert(Wallet.InsufficientAllowance.selector);
         wallet.cLock(spenderThree, address(TOKEN), 30e6);
 
         // Expect allowance decrease upon transferring tokens
+        vm.expectEmit(address(wallet));
+        emit Transfer(spenderTwo, address(TOKEN), spenderThree, 25e6);
         wallet.cTransfer(spenderTwo, address(TOKEN), spenderThree, 25e6); // 45 balance, 25 locked (35e6 left on spenderTwo, 25e6 on spenderThree)
         vm.stopPrank();
         assertEq(wallet.allowance(spenderTwo, address(TOKEN)), 35e6);
@@ -327,6 +391,8 @@ contract WalletTest is Test {
         vm.startPrank(walletOwner);
         vm.expectRevert(Wallet.InsufficientFunds.selector);
         wallet.withdraw(address(TOKEN), 20e6 + 1);
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(TOKEN), 20e6);
         wallet.withdraw(address(TOKEN), 20e6);
         vm.stopPrank();
         assertEq(TOKEN.balanceOf(walletOwner), 50e6);
