@@ -8,6 +8,7 @@ import {Ownable} from "solady/auth/Ownable.sol";
 import {MockToken} from "./mocks/MockToken.sol";
 import {Wallet} from "../src/payments/Wallet.sol";
 import {EIP712Coordinator} from "../src/EIP712Coordinator.sol";
+import {MissingReturnToken} from "weird-erc20/MissingReturns.sol";
 
 /// @title IWalletEvents
 /// @notice Events emitted by Wallet
@@ -133,6 +134,32 @@ contract WalletTest is Test, IWalletEvents {
 
         // Assert withdrawn balance
         assertEq(TOKEN.balanceOf(address(123)), amount);
+    }
+
+    /// @notice Can transfer and use non-standard ERC20 token
+    /// @dev Only minimally tests for cases where tokens have missing return values
+    /// @dev Future improvements: https://github.com/zeroknots/brokentoken
+    function testCanTransferNonStandardERC20ToWallet() public {
+        // Setup ERC20 token with missing returns
+        MissingReturnToken TOKEN_NO_RETURN = new MissingReturnToken(100);
+
+        // Create new wallet
+        Wallet wallet = new Wallet(REGISTRY, address(123));
+
+        // Transfer some tokens to wallet
+        TOKEN_NO_RETURN.transfer(address(wallet), 50);
+
+        // Ensure token balance is reflected
+        assertEq(TOKEN_NO_RETURN.balanceOf(address(wallet)), 50);
+
+        // Ensure balance is withdrawable
+        vm.startPrank(address(123));
+        vm.expectEmit(address(wallet));
+        emit Withdrawl(address(TOKEN_NO_RETURN), 50);
+        wallet.withdraw(address(TOKEN_NO_RETURN), 50);
+
+        // Assert withdrawn balance
+        assertEq(TOKEN_NO_RETURN.balanceOf(address(123)), 50);
     }
 
     /// @notice Can approve a spender to spend some Ether with approval updating on spend
