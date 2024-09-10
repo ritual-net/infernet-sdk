@@ -147,6 +147,41 @@ Ignores self-explanatory files:
             └── Optimistic.sol
 ```
 
+### Deploying contracts on EVM networks
+
+To deploy the contracts on an EVM chain:
+
+1. Set up environment variables:
+   Copy the `.env.sample` file to `.env` and fill in your values:
+
+   ```
+   cp .env.sample .env
+   ```
+
+   Edit `.env` to set your `PRIVATE_KEY` and `RPC_URL`:
+
+   ```
+   PRIVATE_KEY=your_private_key_here
+   RPC_URL=your_rpc_url_here
+   ```
+
+2. Build the contracts:
+
+   ```
+   make build
+   ```
+
+3. Deploy the contracts:
+
+   ```
+   make deploy
+   ```
+
+This will use the `scripts/Deploy.sol` script to deploy the contracts to the network specified by your `RPC_URL`.
+
+Note: Ensure your account has sufficient balance for gas fees on the target network.
+
+
 ## License
 
 [BSD 3-clause Clear](./LICENSE)
