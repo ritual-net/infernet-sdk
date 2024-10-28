@@ -9,6 +9,9 @@ Developers can inherit one of two simple interfaces, [`CallbackConsumer`](./src/
 > [!IMPORTANT]
 > Smart contract architecture, quick-start guides, and in-depth documentation can be found on the [Ritual documentation website](https://docs.ritual.net/infernet/sdk/architecture)
 
+> [!NOTE]
+> Infernet SDK `v1.1.0` has been audited by [Trail of Bits](./audits/v1.1.0/trail-of-bits.pdf) and [Zellic](./audits/v1.1.0/zellic.pdf).
+
 > [!WARNING]
 > These smart contracts are being provided as is. No guarantee, representation or warranty is being made, express or implied, as to the safety or correctness of the smart contracts.
 
@@ -180,7 +183,6 @@ To deploy the contracts on an EVM chain:
 This will use the `scripts/Deploy.sol` script to deploy the contracts to the network specified by your `RPC_URL`.
 
 Note: Ensure your account has sufficient balance for gas fees on the target network.
-
 
 ## License
 
