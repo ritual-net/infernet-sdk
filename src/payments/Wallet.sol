@@ -2,9 +2,9 @@
 pragma solidity ^0.8.4;
 
 import {Registry} from "../Registry.sol";
-import {ERC20} from "solady/tokens/ERC20.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {Coordinated} from "../utility/Coordinated.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /// @title Wallet
 /// @notice Payments wallet that allows: (1) managing ETH & ERC20 token balances, (2) allowing consumers to spend balance, (3) allowing coordinator to manage balance
@@ -27,12 +27,37 @@ contract Wallet is Ownable, Coordinated {
     mapping(address => mapping(address => uint256)) public allowance;
 
     /*//////////////////////////////////////////////////////////////
-                                 ERRORS
+                                 EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `_transferToken` if token transfer fails
-    /// @dev 4-byte signature: `0x90b8ec18`
-    error TransferFailed();
+    /// @notice Emitted when `Wallet` owner processes a withdrawl
+    /// @param token token withdrawn
+    /// @param amount amount of `token` withdrawn
+    event Withdrawl(address token, uint256 amount);
+
+    /// @notice Emitted when `Wallet` owner approves a `spender` to use `amount` `token`
+    /// @param spender authorized spender of `amount` `token`
+    /// @param token token that can be spent
+    /// @param amount amount of `token` allocated
+    event Approval(address indexed spender, address token, uint256 amount);
+
+    /// @notice Emitted when `Coordinator` locks or unlocks some `amount` `token` in `Wallet` escrow
+    /// @param spender authorized spender of `amount` `token`
+    /// @param token token that can be escrowed
+    /// @param amount amount of `token` escrowed
+    /// @param locked True if locking in escrow, False if unlocking from escrow
+    event Escrow(address indexed spender, address token, uint256 amount, bool locked);
+
+    /// @notice Emitted when `Wallet` transfers some quantity of tokens
+    /// @param spender authorized spender of `amount` `token`
+    /// @param token token transferred
+    /// @param to receipient
+    /// @param amount amount of `token` transferred
+    event Transfer(address indexed spender, address token, address indexed to, uint256 amount);
+
+    /*//////////////////////////////////////////////////////////////
+                                 ERRORS
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Thrown if attempting to transfer or lock tokens in quantity greater than possible
     /// @dev Thrown by `withdraw()` if attempting to withdraw `amount > unlockedBalance`
@@ -77,7 +102,7 @@ contract Wallet is Ownable, Coordinated {
             balance = address(this).balance;
         } else {
             // Else, collect token balance from ERC20 contract
-            balance = ERC20(token).balanceOf(address(this));
+            balance = SafeTransferLib.balanceOf(token, address(this));
         }
 
         // Return total token balance - locked token balance
@@ -89,20 +114,12 @@ contract Wallet is Ownable, Coordinated {
     /// @param to address to transfer to
     /// @param amount amount of token to transfer
     function _transferToken(address token, address to, uint256 amount) internal {
-        // Track successful completion
-        bool success;
-
         if (token == address(0)) {
             // Transfer ETH
-            (success,) = payable(to).call{value: amount}("");
+            SafeTransferLib.forceSafeTransferETH(to, amount);
         } else {
             // Tranfer tokens
-            success = ERC20(token).transfer(to, amount);
-        }
-
-        // If transfer unsuccessful, revert with transfer failure error
-        if (!success) {
-            revert TransferFailed();
+            SafeTransferLib.safeTransfer(token, to, amount);
         }
     }
 
@@ -125,6 +142,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Withdraw `amount` `token`(s) to `msg.sender` (`owner`)
         _transferToken(token, msg.sender, amount);
+
+        // Emit withdrawl
+        emit Withdrawl(token, amount);
     }
 
     /// @notice Allows `owner` to approve `spender` as a consumer that can spend `amount` `token`(s) from `Wallet`
@@ -134,6 +154,7 @@ contract Wallet is Ownable, Coordinated {
     /// @param amount approval amount
     function approve(address spender, address token, uint256 amount) external onlyOwner {
         allowance[spender][token] = amount;
+        emit Approval(spender, token, amount);
     }
 
     /// @notice Allows coordinator to transfer `amount` `tokens` to `to` on behalf of `spender`
@@ -152,6 +173,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Transfer token
         _transferToken(token, to, amount);
+
+        // Emit transfer
+        emit Transfer(spender, token, to, amount);
     }
 
     /// @notice Allows coordinator to lock `amount` `token`(s) in escrow on behalf of `spender`
@@ -177,6 +201,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Increment escrow locked balance
         lockedBalance[token] += amount;
+
+        // Emit escrow locking
+        emit Escrow(spender, token, amount, true);
     }
 
     /// @notice Allows coordinator to unlock `amount` `token`(s) from escrow on behalf of `spender`
@@ -197,6 +224,9 @@ contract Wallet is Ownable, Coordinated {
 
         // Increment spender allowance (now that funds are unlocked)
         allowance[spender][token] += amount;
+
+        // Emit escrow unlocking
+        emit Escrow(spender, token, amount, false);
     }
 
     /*//////////////////////////////////////////////////////////////

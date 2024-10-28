@@ -7,9 +7,15 @@ import {LibDeploy} from "./lib/LibDeploy.sol";
 import {Wallet} from "../src/payments/Wallet.sol";
 import {WalletFactory} from "../src/payments/WalletFactory.sol";
 
+/// @title IWalletFactoryEvents
+/// @notice Events emitted by WalletFactory
+interface IWalletFactoryEvents {
+    event WalletCreated(address indexed caller, address indexed owner, address wallet);
+}
+
 /// @title WalletFactoryTest
 /// @notice Tests WalletFactory implementation
-contract WalletFactoryTest is Test {
+contract WalletFactoryTest is Test, IWalletFactoryEvents {
     /*//////////////////////////////////////////////////////////////
                                 INTERNAL
     //////////////////////////////////////////////////////////////*/
@@ -41,8 +47,17 @@ contract WalletFactoryTest is Test {
 
     /// @notice Wallets created via `WalletFactory.createWallet()` are appropriately setup
     function testFuzzWalletsAreCreatedCorrectly(address initialOwner) public {
+        // Predict expected wallet address
+        uint256 nonce = vm.getNonce(address(WALLET_FACTORY));
+        address expected = vm.computeCreateAddress(address(WALLET_FACTORY), nonce);
+
         // Create new wallet
+        vm.expectEmit(address(WALLET_FACTORY));
+        emit WalletCreated(address(this), initialOwner, expected);
         address walletAddress = WALLET_FACTORY.createWallet(initialOwner);
+
+        // Verify wallet is deployed to correct address
+        assertEq(expected, walletAddress);
 
         // Verify wallet is valid
         assertTrue(WALLET_FACTORY.isValidWallet(walletAddress));
