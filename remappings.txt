@@ -1,2 +1,3 @@
 solady/=lib/solady/src
 forge-std/=lib/forge-std/src
+weird-erc20/=lib/weird-erc20/src
