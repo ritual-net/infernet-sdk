@@ -2,9 +2,9 @@
 pragma solidity ^0.8.4;
 
 import {Registry} from "../Registry.sol";
-import {ERC20} from "solady/tokens/ERC20.sol";
 import {Ownable} from "solady/auth/Ownable.sol";
 import {Coordinated} from "../utility/Coordinated.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 
 /// @title Wallet
 /// @notice Payments wallet that allows: (1) managing ETH & ERC20 token balances, (2) allowing consumers to spend balance, (3) allowing coordinator to manage balance
@@ -59,10 +59,6 @@ contract Wallet is Ownable, Coordinated {
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Thrown by `_transferToken` if token transfer fails
-    /// @dev 4-byte signature: `0x90b8ec18`
-    error TransferFailed();
-
     /// @notice Thrown if attempting to transfer or lock tokens in quantity greater than possible
     /// @dev Thrown by `withdraw()` if attempting to withdraw `amount > unlockedBalance`
     /// @dev Thrown by `cLock()` if attempting to escrow `amount > unlockedBalance`
@@ -106,7 +102,7 @@ contract Wallet is Ownable, Coordinated {
             balance = address(this).balance;
         } else {
             // Else, collect token balance from ERC20 contract
-            balance = ERC20(token).balanceOf(address(this));
+            balance = SafeTransferLib.balanceOf(token, address(this));
         }
 
         // Return total token balance - locked token balance
@@ -118,20 +114,12 @@ contract Wallet is Ownable, Coordinated {
     /// @param to address to transfer to
     /// @param amount amount of token to transfer
     function _transferToken(address token, address to, uint256 amount) internal {
-        // Track successful completion
-        bool success;
-
         if (token == address(0)) {
             // Transfer ETH
-            (success,) = payable(to).call{value: amount}("");
+            SafeTransferLib.forceSafeTransferETH(to, amount);
         } else {
             // Tranfer tokens
-            success = ERC20(token).transfer(to, amount);
-        }
-
-        // If transfer unsuccessful, revert with transfer failure error
-        if (!success) {
-            revert TransferFailed();
+            SafeTransferLib.safeTransfer(token, to, amount);
         }
     }
 

@@ -28,9 +28,10 @@ contract WalletFactory {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Emitted when a new `Wallet` is created
+    /// @param caller `createWallet` call initiator
     /// @param owner owner of `Wallet`
     /// @param wallet `Wallet` address
-    event WalletCreated(address indexed owner, address wallet);
+    event WalletCreated(address indexed caller, address indexed owner, address wallet);
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -58,7 +59,7 @@ contract WalletFactory {
         wallets[address(wallet)] = true;
 
         // Emit wallet creation
-        emit WalletCreated(initialOwner, address(wallet));
+        emit WalletCreated(msg.sender, initialOwner, address(wallet));
 
         // Return created wallet address
         return address(wallet);

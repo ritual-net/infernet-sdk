@@ -10,7 +10,7 @@ import {WalletFactory} from "../src/payments/WalletFactory.sol";
 /// @title IWalletFactoryEvents
 /// @notice Events emitted by WalletFactory
 interface IWalletFactoryEvents {
-    event WalletCreated(address indexed owner, address wallet);
+    event WalletCreated(address indexed caller, address indexed owner, address wallet);
 }
 
 /// @title WalletFactoryTest
@@ -53,7 +53,7 @@ contract WalletFactoryTest is Test, IWalletFactoryEvents {
 
         // Create new wallet
         vm.expectEmit(address(WALLET_FACTORY));
-        emit WalletCreated(initialOwner, expected);
+        emit WalletCreated(address(this), initialOwner, expected);
         address walletAddress = WALLET_FACTORY.createWallet(initialOwner);
 
         // Verify wallet is deployed to correct address
