@@ -546,6 +546,9 @@ contract Coordinator is ReentrancyGuard {
         bytes32 key = keccak256(abi.encode(subscriptionId, interval, node));
         ProofRequest memory request = proofRequests[key];
 
+        // Delete proof request (optimistically, proof processed)
+        delete proofRequests[key];
+
         // If proof request does not exist, throw
         if (request.expiry == 0) {
             revert ProofRequestNotFound();
@@ -584,9 +587,6 @@ contract Coordinator is ReentrancyGuard {
                 sub.owner, sub.paymentToken, address(request.nodeWallet), request.consumerEscrowed
             );
         }
-
-        // Delete proof request (proof processed)
-        delete proofRequests[key];
 
         // Emit successful proof verification
         // Verifier here can be either sub.verifier or non-verifier msg.sender if after expiration
