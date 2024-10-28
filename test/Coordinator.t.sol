@@ -27,6 +27,9 @@ interface ICoordinatorEvents {
     event SubscriptionCreated(uint32 indexed id);
     event SubscriptionCancelled(uint32 indexed id);
     event SubscriptionFulfilled(uint32 indexed id, address indexed node);
+    event ProofVerified(
+        uint32 indexed id, uint32 indexed interval, address indexed node, bool active, address verified, bool valid
+    );
 }
 
 /// @title CoordinatorConstants
@@ -1119,6 +1122,20 @@ contract CoordinatorEagerPaymentNoProofTest is CoordinatorTest {
         BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, bobWallet);
     }
 
+    /// @notice Subscription cannot be fulfilled with an invalid `nodeWallet` not created by `WalletFactory`
+    function testSubscriptionCannotBeFulfilledWithInvalidNodeWalletProvenance() public {
+        // Create new wallet with Alice as owner
+        address aliceWallet = WALLET_FACTORY.createWallet(address(ALICE));
+
+        // Create new one-time subscription with 50e6 payout
+        uint32 subId =
+            CALLBACK.createMockRequest(MOCK_CONTAINER_ID, MOCK_INPUT, 1, address(TOKEN), 50e6, aliceWallet, NO_VERIFIER);
+
+        // Execute response fulfillment from Bob using address(BOB) as nodeWallet
+        vm.expectRevert(Coordinator.InvalidWallet.selector);
+        BOB.deliverCompute(subId, 1, MOCK_INPUT, MOCK_OUTPUT, MOCK_PROOF, address(BOB));
+    }
+
     /// @notice Subscription cannot be fulfilled if `Wallet` does not approve consumer
     function testSubscriptionCannotBeFulfilledIfSpenderNoAllowance() public {
         // Create new wallets
@@ -1529,6 +1546,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Fast forward 1 day and trigger optimistic response with valid: true
         vm.warp(1 days);
+        vm.expectEmit(address(COORDINATOR));
+        emit ProofVerified(subId, 1, address(BOB), true, address(OPTIMISTIC_VERIFIER), true);
         OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), true);
 
         // Assert new balances
@@ -1595,6 +1614,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Fast forward 1 day and trigger optimistic response with valid: true
         vm.warp(1 days);
+        vm.expectEmit(address(COORDINATOR));
+        emit ProofVerified(subId, 1, address(BOB), true, address(OPTIMISTIC_VERIFIER), true);
         OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), true);
 
         // Assert new balances
@@ -1667,6 +1688,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Fast forward 1 day and trigger optimistic response with valid: false
         vm.warp(1 days);
+        vm.expectEmit(address(COORDINATOR));
+        emit ProofVerified(subId, 1, address(BOB), true, address(OPTIMISTIC_VERIFIER), false);
         OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), false);
 
         // Assert new balances
@@ -1741,6 +1764,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Fast forward 1 week and trigger forced proof verification
         vm.warp(1 weeks);
+        vm.expectEmit(address(COORDINATOR));
+        emit ProofVerified(subId, 1, address(BOB), false, address(this), true);
         COORDINATOR.finalizeProofVerification(subId, 1, address(BOB), true);
 
         // Assert new balances
@@ -1803,6 +1828,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // During optimistic window, process as false
         vm.warp(1 days + 1 hours);
+        vm.expectEmit(address(COORDINATOR));
+        emit ProofVerified(subId, 1, address(BOB), true, address(OPTIMISTIC_VERIFIER), false);
         OPTIMISTIC_VERIFIER.mockDeliverProof(subId, 1, address(BOB), false);
 
         // Deliver second subscription from Bob
@@ -1811,6 +1838,8 @@ contract CoordinatorLazyPaymentProofTest is CoordinatorTest {
 
         // Fast forward past optimistic window, processing in favor of Bob
         vm.warp(10 days);
+        vm.expectEmit(address(COORDINATOR));
+        emit ProofVerified(subId, 2, address(BOB), false, address(this), true);
         COORDINATOR.finalizeProofVerification(subId, 2, address(BOB), true);
 
         // Assert new balances

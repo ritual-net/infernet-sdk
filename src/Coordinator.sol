@@ -150,6 +150,17 @@ contract Coordinator is ReentrancyGuard {
     /// @param node address of fulfilling node
     event SubscriptionFulfilled(uint32 indexed id, address indexed node);
 
+    /// @notice Emitted when a verifier returns with proof validity
+    /// @param id subscription ID
+    /// @param interval subscription interval
+    /// @param node address of fulfilling node
+    /// @param active True if proof verification period still active, else False
+    /// @param verifier address of verifier contract
+    /// @param valid True if proof valid else False
+    event ProofVerified(
+        uint32 indexed id, uint32 indexed interval, address indexed node, bool active, address verifier, bool valid
+    );
+
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -410,6 +421,13 @@ contract Coordinator is ReentrancyGuard {
 
         // Handle payments (non-zero payment per subscription fulfillment)
         if (subscription.paymentAmount > 0) {
+            // Check if node wallet is valid and created by WalletFactory
+            // While this check in theory could be within the verification flow itself (when the node escrows funds),
+            // we keep it here to preserve the readability given following check and early input sanitization
+            if (!WALLET_FACTORY.isValidWallet(nodeWallet)) {
+                revert InvalidWallet();
+            }
+
             // Check if subscription wallet is valid and created by WalletFactory
             if (!WALLET_FACTORY.isValidWallet(subscription.wallet)) {
                 revert InvalidWallet();
@@ -528,6 +546,9 @@ contract Coordinator is ReentrancyGuard {
         bytes32 key = keccak256(abi.encode(subscriptionId, interval, node));
         ProofRequest memory request = proofRequests[key];
 
+        // Delete proof request (optimistically, proof processed)
+        delete proofRequests[key];
+
         // If proof request does not exist, throw
         if (request.expiry == 0) {
             revert ProofRequestNotFound();
@@ -541,7 +562,8 @@ contract Coordinator is ReentrancyGuard {
         Wallet(sub.wallet).cUnlock(sub.owner, sub.paymentToken, request.consumerEscrowed);
 
         // If proof verification period is still active
-        if (block.timestamp < request.expiry) {
+        bool active = uint32(block.timestamp) < request.expiry;
+        if (active) {
             // If caller is not verifier, revert
             if (sub.verifier != msg.sender) {
                 revert UnauthorizedVerifier();
@@ -566,7 +588,8 @@ contract Coordinator is ReentrancyGuard {
             );
         }
 
-        // Delete proof request (proof processed)
-        delete proofRequests[key];
+        // Emit successful proof verification
+        // Verifier here can be either sub.verifier or non-verifier msg.sender if after expiration
+        emit ProofVerified(subscriptionId, interval, node, active, msg.sender, valid);
     }
 }
